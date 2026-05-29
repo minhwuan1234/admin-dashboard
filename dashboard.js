@@ -151,13 +151,15 @@ async function openToolDetail(toolId) {
   $("detail-body").innerHTML = html;
 
   // After DOM inject: init chart + dropdown if present
-  var chartRange = document.getElementById("chart-range");
-  if (chartRange && window._buildDUChart) {
-    window._buildDUChart(parseInt(chartRange.value));
-    chartRange.addEventListener("change", function() {
-      window._buildDUChart(parseInt(this.value));
-    });
-  }
+  setTimeout(function() {
+    var chartRange = document.getElementById("chart-range");
+    if (chartRange && window._buildDUChart) {
+      window._buildDUChart(parseInt(chartRange.value));
+      chartRange.addEventListener("change", function() {
+        window._buildDUChart(parseInt(this.value));
+      });
+    }
+  }, 0);
 }
 
 function backToOverview() {
