@@ -98,7 +98,7 @@ window.TOOL_REGISTRY.push({
       chartDays.push({ dateStr: dateStr, label: label, count: names.length, total: totalMembers, names: names });
     }
 
-    return { totalMembers: totalMembers, submittedCount: submittedCount, missingCount: missingCount, submissionRate: submissionRate, memberStatuses: memberStatuses, allTasks: allTasks, chartDays: chartDays };
+    return { totalMembers: totalMembers, submittedCount: submittedCount, missingCount: missingCount, submissionRate: submissionRate, memberStatuses: memberStatuses, allTasks: allTasks, chartDays: chartDays, _rawSubmissions: cleanSubs };
   },
 
   /* ══════════════════════════════
@@ -136,27 +136,56 @@ window.TOOL_REGISTRY.push({
       '<div class="stat-card"><span class="stat-label">Tong tasks</span><span class="stat-value">' + data.allTasks.length + '</span></div>' +
       '</div>';
 
-    /* Bar chart */
-    var maxCount = Math.max(data.totalMembers, 1);
-    var bars = data.chartDays.map(function(d) {
-      var pct      = Math.round(d.count / maxCount * 100);
-      var barColor = pct >= 80 ? "var(--green)" : pct >= 50 ? "var(--accent)" : pct > 0 ? "var(--yellow)" : "var(--bg-hover)";
-      var nameList = d.names.length > 0 ? d.names.join(", ") : "Chua co ai submit";
-      return '<div class="chart-col">' +
-        '<div class="chart-bar-wrap">' +
-          '<div class="chart-tooltip"><strong>' + d.dateStr + '</strong><br>' + d.count + '/' + d.total + ' nguoi submit<br><span style="color:var(--text-secondary);font-size:11px">' + nameList + '</span></div>' +
-          '<div class="chart-bar" style="height:' + Math.max(pct, 4) + '%;background:' + barColor + '"></div>' +
-        '</div>' +
-        '<div class="chart-label">' + d.label + '</div>' +
-        '<div class="chart-count">' + d.count + '</div>' +
-      '</div>';
-    }).join("");
+    /* Bar chart — data embed vao DOM, JS xu ly range */
+    var allSubmissions = data._rawSubmissions || [];
+    var totalMembers   = data.totalMembers;
 
     var chartHTML =
       '<div class="members-section" style="margin-bottom:24px">' +
-        '<div class="section-header"><span class="section-title">7 ngay gan nhat</span><span class="section-meta">Hover vao cot de xem chi tiet</span></div>' +
-        '<div class="chart-wrap">' + bars + '</div>' +
-      '</div>';
+        '<div class="section-header">' +
+          '<span class="section-title">Lich su submit</span>' +
+          '<select id="chart-range" style="background:var(--bg-hover);border:1px solid var(--border-strong);color:var(--text-primary);font-size:12px;padding:4px 10px;border-radius:var(--radius-sm);cursor:pointer;outline:none">' +
+            '<option value="3">3 ngay gan nhat</option>' +
+            '<option value="7" selected>7 ngay gan nhat</option>' +
+            '<option value="30">1 thang gan nhat</option>' +
+            '<option value="90">3 thang gan nhat</option>' +
+          '</select>' +
+        '</div>' +
+        '<div id="chart-container" class="chart-wrap"></div>' +
+      '</div>' +
+      '<script>' +
+      'var _subs=' + JSON.stringify(allSubmissions) + ';' +
+      'var _total=' + totalMembers + ';' +
+      'function _buildChart(n){' +
+        'var now=new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));' +
+        'var days=[];' +
+        'for(var i=n-1;i>=0;i--){' +
+          'var d=new Date(now);d.setDate(d.getDate()-i);' +
+          'var ds=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");' +
+          'var lbl=String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0");' +
+          'var subs=_subs.filter(function(s){return s.date===ds;});' +
+          'var names=subs.map(function(s){return s.memberName||s.userId;}).filter(function(n){return n!=="Unknown";});' +
+          'days.push({ds:ds,lbl:lbl,count:names.length,names:names});' +
+        '}' +
+        'var max=Math.max(_total,1);' +
+        'var html=days.map(function(d){' +
+          'var pct=Math.round(d.count/max*100);' +
+          'var bc=pct>=80?"var(--green)":pct>=50?"var(--accent)":pct>0?"var(--yellow)":"var(--bg-hover)";' +
+          'var nl=d.names.length>0?d.names.join(", "):"Chua co ai submit";' +
+          'return "<div class=\"chart-col\">"' +
+            '+"<div class=\"chart-bar-wrap\">"' +
+            '+"<div class=\"chart-tooltip\"><strong>"+d.ds+"</strong><br>"+d.count+"/"+_total+" nguoi submit<br><span style=\"color:var(--text-secondary);font-size:11px\">"+nl+"</span></div>"' +
+            '+"<div class=\"chart-bar\" style=\"height:"+Math.max(pct,4)+"%;background:"+bc+"\"></div>"' +
+            '+"</div>"' +
+            '+"<div class=\"chart-label\">"+d.lbl+"</div>"' +
+            '+"<div class=\"chart-count\">"+d.count+"</div>"' +
+          '+"</div>";' +
+        '}).join("");' +
+        'document.getElementById("chart-container").innerHTML=html;' +
+      '}' +
+      'document.getElementById("chart-range").addEventListener("change",function(){_buildChart(parseInt(this.value));});' +
+      '_buildChart(7);' +
+      '<\/script>';
 
     /* Members table */
     var rows = data.memberStatuses.slice().sort(function(a, b) {
