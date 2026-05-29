@@ -1,0 +1,63 @@
+/**
+ * TOOL CONFIG: Daily Update Task Process PM
+ * ─────────────────────────────────────────
+ * Mỗi tool trong Admin Dashboard là 1 object config.
+ * Copy file này để thêm tool mới.
+ */
+
+const DAILY_UPDATE_TOOL = {
+  /* ── Identity ── */
+  id:          "daily-update",
+  name:        "Daily Update",
+  description: "Tracking tỉ lệ submit standup hàng ngày của team.",
+  icon:        "ti-check-square",
+
+  /* ── Status: "active" | "coming-soon" | "archived" ── */
+  status: "active",
+
+  /* ── Data source ── */
+  dataSource: {
+    type: "github-json",
+    // Daily tasks (task list per member per day)
+    dailyTasksUrl: "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/daily-tasks.json",
+    // Responses (what each member submitted)
+    responsesUrl:  "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/responses.json",
+    // Members map (name → open_id)
+    membersUrl:    "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/members.json",
+    // Summary (pre-computed by GitHub Actions)
+    summaryUrl:    "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/tracking/daily-update-summary.json",
+    cacheBust: true,  // append ?t=timestamp khi fetch
+  },
+
+  /* ── Metrics hiển thị trên card overview ── */
+  metrics: [
+    {
+      key:    "submissionRate",
+      label:  "Tỉ lệ submit",
+      format: "percent",         // "percent" | "number" | "text"
+      colorFn: (v) => v >= 80 ? "green" : v >= 50 ? "amber" : "red",
+    },
+    {
+      key:    "submittedCount",
+      label:  "Đã submit",
+      format: "fraction",        // "fraction" hiển thị "X/Y"
+      denomKey: "totalMembers",
+    },
+    {
+      key:    "missingCount",
+      label:  "Chưa submit",
+      format: "number",
+      colorFn: (v) => v === 0 ? "green" : v <= 2 ? "amber" : "red",
+    },
+  ],
+
+  /* ── Render detail view ── */
+  // Hàm này nhận raw data, trả về HTML string cho detail page
+  renderDetail: async function(data) {
+    return window.DailyUpdateDetail.render(data);
+  },
+};
+
+// Đăng ký tool vào global registry
+window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
+window.TOOL_REGISTRY.push(DAILY_UPDATE_TOOL);
