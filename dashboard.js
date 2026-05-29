@@ -147,8 +147,15 @@ function processDailyUpdateData(daily, responses, members, summary, submissions)
   var responseList = Array.isArray(responses) ? responses : (responses.responses || []);
   responseList = responseList.filter(function(r) { return r.userId && r.userId.startsWith("ou_"); });
 
-  var activeMemberNames = new Set((daily.members || []).map(function(m) { return m.member; }));
-  var activeMembers = Object.entries(members || {}).filter(function(e) { return activeMemberNames.has(e[0]); });
+  // Active members = ai co submission trong 30 ngay gan nhat
+  var cleanSubs30 = Array.isArray(submissions) ? submissions.filter(function(s) { return s.userId && s.userId.startsWith("ou_"); }) : [];
+  var activeUserIds = new Set(cleanSubs30.map(function(s) { return s.userId; }));
+  // Fallback: neu chua co submissions thi dung daily-tasks
+  if (activeUserIds.size === 0) {
+    var activeMemberNames = new Set((daily.members || []).map(function(m) { return m.member; }));
+    Object.entries(members || {}).forEach(function(e) { if (activeMemberNames.has(e[0])) activeUserIds.add(e[1]); });
+  }
+  var activeMembers = Object.entries(members || {}).filter(function(e) { return activeUserIds.has(e[1]); });
   var totalMembers = activeMembers.length || Object.keys(members || {}).length;
 
   var submittedIds   = new Set(responseList.map(function(r) { return r.userId; }));
