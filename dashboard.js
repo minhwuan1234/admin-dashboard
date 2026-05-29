@@ -144,18 +144,19 @@ function processDailyUpdateData(daily, responses, members, summary, submissions)
   var idToName = {};
   Object.entries(members || {}).forEach(function(e) { idToName[e[1]] = e[0]; });
 
-  var totalMembers = Object.keys(members || {}).length;
-
   var responseList = Array.isArray(responses) ? responses : (responses.responses || []);
-  // Filter out garbage records (userId that is not a real lark open_id)
   responseList = responseList.filter(function(r) { return r.userId && r.userId.startsWith("ou_"); });
+
+  var activeMemberNames = new Set((daily.members || []).map(function(m) { return m.member; }));
+  var activeMembers = Object.entries(members || {}).filter(function(e) { return activeMemberNames.has(e[0]); });
+  var totalMembers = activeMembers.length || Object.keys(members || {}).length;
 
   var submittedIds   = new Set(responseList.map(function(r) { return r.userId; }));
   var submittedCount = submittedIds.size;
   var missingCount   = Math.max(totalMembers - submittedCount, 0);
   var submissionRate = totalMembers > 0 ? Math.round(submittedCount / totalMembers * 100) : 0;
 
-  var memberStatuses = Object.entries(members || {}).map(function(e) {
+  var memberStatuses = activeMembers.map(function(e) {
     var name = e[0], id = e[1];
     var sub = responseList.find(function(r) { return r.userId === id; });
     return { name: name, userId: id, status: sub ? "submitted" : "missing", submittedAt: sub ? sub.submittedAt : null, tasks: sub ? (sub.tasks || []) : [], message: sub ? (sub.message || "") : "" };
@@ -221,7 +222,7 @@ function renderDailyUpdateDetail(data) {
     return '<tr><td><span style="font-weight:500">' + m.name + '</span>' + (m.message ? '<br><span style="font-size:11px;color:var(--text-muted)">' + m.message.substring(0,60) + (m.message.length>60?"…":"") + '</span>' : '') + '</td>' +
       '<td><span class="status-pill ' + m.status + '">' + (m.status==="submitted"?"✓ Da submit":"✗ Chua submit") + '</span></td>' +
       '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">' + formatTime(m.submittedAt) + '</td>' +
-      '<td>' + progCell + '</td>' +
+      '<td style="text-align:center">' + progCell + '</td>' +
       '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">' + (m.tasks.length > 0 ? m.tasks.length + " task" : "—") + '</td></tr>';
   }).join("");
 
