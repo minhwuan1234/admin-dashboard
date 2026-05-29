@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main class="page">
+    <header class="header">
+      <div>
+        <p class="eyebrow">Admin Dashboard</p>
+        <h1>Tool Tracking Center</h1>
+        <p class="subtitle">Theo dõi trạng thái submit của các internal tools.</p>
+      </div>
+    </header>
+
+    <section class="tool-card">
+      <div class="tool-header">
+        <div>
+          <h2 id="toolName">Daily Update</h2>
+          <p id="toolDescription">Loading...</p>
+        </div>
+
+        <select id="dateSelect"></select>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <p>Total Members</p>
+          <h3 id="totalMembers">-</h3>
+        </div>
+
+        <div class="stat-card">
+          <p>Submitted</p>
+          <h3 id="submittedMembers">-</h3>
+        </div>
+
+        <div class="stat-card">
+          <p>Missing</p>
+          <h3 id="missingMembers">-</h3>
+        </div>
+
+        <div class="stat-card">
+          <p>Submission Rate</p>
+          <h3 id="submissionRate">-</h3>
+        </div>
+      </div>
+
+      <section class="section">
+        <h3>Member Status</h3>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Member</th>
+                <th>User ID</th>
+                <th>Status</th>
+                <th>Submitted At</th>
+                <th>Submit Count</th>
+              </tr>
+            </thead>
+            <tbody id="memberTableBody">
+              <tr>
+                <td colspan="5">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>Recent Submissions</h3>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Member</th>
+                <th>User ID</th>
+                <th>Task Count</th>
+                <th>Submitted At</th>
+              </tr>
+            </thead>
+            <tbody id="submissionTableBody">
+              <tr>
+                <td colspan="5">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="./admin.js"></script>
+</body>
+</html>
