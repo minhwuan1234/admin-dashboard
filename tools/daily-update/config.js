@@ -1,6 +1,6 @@
 const DAILY_UPDATE_TOOL = {
   id:          "daily-update-task-pm",
-  name:        "Daily Update Task PM",
+  name:        "daily-",
   description: "Tracking tỉ lệ submit standup hàng ngày của team.",
   icon:        "ti-check-square",
   status:      "active",
