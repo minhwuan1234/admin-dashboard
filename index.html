@@ -3,99 +3,82 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Dashboard</title>
-  <link rel="stylesheet" href="./style.css" />
+  <title>F.Learning — Admin Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/dist/tabler-icons.min.css" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="page">
-    <header class="header">
-      <div>
-        <p class="eyebrow">Admin Dashboard</p>
-        <h1>Tool Tracking Center</h1>
-        <p class="subtitle">Theo dõi trạng thái submit của các internal tools.</p>
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-mark">F.</span>
+      <span class="logo-text">Admin</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-view="overview">
+        <i class="ti ti-layout-dashboard"></i>
+        <span>Overview</span>
+      </a>
+      <div class="nav-section-label">Tools</div>
+      <!-- JS sẽ inject tool nav items ở đây -->
+      <div id="nav-tools"></div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <span id="last-updated-sidebar" class="footer-note"></span>
+    </div>
+  </aside>
+
+  <!-- ═══ MAIN ═══ -->
+  <main class="main-content">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menu-toggle" aria-label="Toggle sidebar">
+          <i class="ti ti-menu-2"></i>
+        </button>
+        <div>
+          <h1 class="page-title" id="page-title">Overview</h1>
+          <p class="page-subtitle" id="page-subtitle">Tất cả tools — <span id="today-display"></span></p>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn-refresh" id="btn-refresh" title="Refresh data">
+          <i class="ti ti-refresh"></i>
+        </button>
+        <span class="badge-live"><i class="ti ti-circle-filled"></i> Live</span>
       </div>
     </header>
 
-    <section class="tool-card">
-      <div class="tool-header">
-        <div>
-          <h2 id="toolName">Daily Update</h2>
-          <p id="toolDescription">Loading...</p>
+    <!-- VIEWS -->
+    <div class="view-container">
+
+      <!-- Overview view -->
+      <div id="view-overview" class="view active">
+        <div class="overview-stats" id="overview-stats">
+          <!-- JS render stat cards -->
         </div>
-
-        <select id="dateSelect"></select>
-      </div>
-
-      <div class="stats-grid">
-        <div class="stat-card">
-          <p>Total Members</p>
-          <h3 id="totalMembers">-</h3>
-        </div>
-
-        <div class="stat-card">
-          <p>Submitted</p>
-          <h3 id="submittedMembers">-</h3>
-        </div>
-
-        <div class="stat-card">
-          <p>Missing</p>
-          <h3 id="missingMembers">-</h3>
-        </div>
-
-        <div class="stat-card">
-          <p>Submission Rate</p>
-          <h3 id="submissionRate">-</h3>
+        <div class="tools-grid" id="tools-grid">
+          <!-- JS render tool cards -->
         </div>
       </div>
 
-      <section class="section">
-        <h3>Member Status</h3>
-
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Member</th>
-                <th>User ID</th>
-                <th>Status</th>
-                <th>Submitted At</th>
-                <th>Submit Count</th>
-              </tr>
-            </thead>
-            <tbody id="memberTableBody">
-              <tr>
-                <td colspan="5">Loading...</td>
-              </tr>
-            </tbody>
-          </table>
+      <!-- Detail view (per-tool) -->
+      <div id="view-detail" class="view">
+        <div id="detail-content">
+          <!-- JS render tool detail -->
         </div>
-      </section>
+      </div>
 
-      <section class="section">
-        <h3>Recent Submissions</h3>
-
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Member</th>
-                <th>User ID</th>
-                <th>Task Count</th>
-                <th>Submitted At</th>
-              </tr>
-            </thead>
-            <tbody id="submissionTableBody">
-              <tr>
-                <td colspan="5">Loading...</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </section>
+    </div>
   </main>
 
-  <script src="./admin.js"></script>
+  <script src="tools/daily-update/config.js"></script>
+  <script src="dashboard.js"></script>
 </body>
 </html>
