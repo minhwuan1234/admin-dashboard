@@ -4,16 +4,17 @@ window.TOOL_REGISTRY.push({
   id:          "daily-update",
   name:        "Daily Update",
   description: "Tracking ti le submit standup hang ngay cua team.",
-  icon:        "ti-check-square",
+  icon:        "ti-square-check",
   status:      "active",
 
   dataSource: {
-    type:          "github-json",
-    dailyTasksUrl: "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/daily-tasks.json",
-    responsesUrl:  "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/responses.json",
-    membersUrl:    "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/members.json",
-    summaryUrl:    "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/tracking/daily-update-summary.json",
-    cacheBust:     true
+    type:           "github-json",
+    dailyTasksUrl:  "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/daily-tasks.json",
+    responsesUrl:   "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/responses.json",
+    membersUrl:     "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/members.json",
+    summaryUrl:     "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/tracking/daily-update-summary.json",
+    submissionsUrl: "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/tracking/daily-update-submissions.json",
+    cacheBust:      true
   },
 
   metrics: [
