@@ -143,19 +143,55 @@ window.TOOL_REGISTRY.push({
     window._buildDUChart = function(n) {
       var container = document.getElementById("chart-container");
       if (!container) return;
+
+      // Nhom theo tuan neu range >= 30 ngay
+      var groupByWeek = n >= 30;
+
       var now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
-      var days = [];
-      for (var i = n - 1; i >= 0; i--) {
-        var d  = new Date(now);
-        d.setDate(d.getDate() - i);
-        var ds  = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-        var lbl = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
-        var subs  = window._duSubs.filter(function(s) { return s.date === ds; });
-        var names = subs.map(function(s) { return s.memberName || s.userId; }).filter(function(n) { return n !== "Unknown"; });
-        days.push({ ds: ds, lbl: lbl, count: names.length, names: names });
+      var buckets = [];
+
+      if (!groupByWeek) {
+        // Tung ngay
+        for (var i = n - 1; i >= 0; i--) {
+          var d   = new Date(now); d.setDate(d.getDate() - i);
+          var ds  = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+          var lbl = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
+          var subs  = window._duSubs.filter(function(s) { return s.date === ds; });
+          var names = subs.map(function(s) { return s.memberName||s.userId; }).filter(function(x) { return x !== "Unknown"; });
+          buckets.push({ lbl: lbl, tooltip: ds, count: names.length, names: names, days: 1 });
+        }
+      } else {
+        // Theo tuan — moi bucket = 7 ngay
+        var totalWeeks = Math.ceil(n / 7);
+        for (var w = totalWeeks - 1; w >= 0; w--) {
+          var weekStart = new Date(now); weekStart.setDate(weekStart.getDate() - w * 7 - 6);
+          var weekEnd   = new Date(now); weekEnd.setDate(weekEnd.getDate() - w * 7);
+          var lblS = String(weekStart.getDate()).padStart(2,"0") + "/" + String(weekStart.getMonth()+1).padStart(2,"0");
+          var lblE = String(weekEnd.getDate()).padStart(2,"0") + "/" + String(weekEnd.getMonth()+1).padStart(2,"0");
+          var allNames = [];
+          var submittedDays = 0;
+          for (var day = 0; day < 7; day++) {
+            var dd  = new Date(weekStart); dd.setDate(dd.getDate() + day);
+            var dds = dd.getFullYear() + "-" + String(dd.getMonth()+1).padStart(2,"0") + "-" + String(dd.getDate()).padStart(2,"0");
+            var ds2 = window._duSubs.filter(function(s) { return s.date === dds; });
+            if (ds2.length > 0) submittedDays++;
+            ds2.forEach(function(s) {
+              var nm = s.memberName || s.userId;
+              if (nm !== "Unknown" && allNames.indexOf(nm) === -1) allNames.push(nm);
+            });
+          }
+          buckets.push({
+            lbl: lblS + "-" + lblE,
+            tooltip: lblS + " ~ " + lblE,
+            count: submittedDays,   // so ngay co submission trong tuan
+            names: allNames,
+            days: 7
+          });
+        }
       }
-      var max     = Math.max(window._duTotal, 1);
-      var hasData = days.some(function(d) { return d.count > 0; });
+
+      var max     = groupByWeek ? 5 : Math.max(window._duTotal, 1); // tuan max 5 ngay lam viec
+      var hasData = buckets.some(function(b) { return b.count > 0; });
 
       if (!hasData) {
         container.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:var(--text-muted)">' +
@@ -165,18 +201,22 @@ window.TOOL_REGISTRY.push({
         return;
       }
 
-      container.innerHTML = days.map(function(d) {
-        var pct = Math.round(d.count / max * 100);
+      container.innerHTML = buckets.map(function(b) {
+        var pct = groupByWeek
+          ? Math.round(b.count / max * 100)
+          : Math.round(b.count / Math.max(window._duTotal, 1) * 100);
         var bc  = pct >= 80 ? "var(--green)" : pct >= 50 ? "var(--accent)" : pct > 0 ? "var(--yellow)" : "var(--bg-hover)";
-        var nl  = d.names.length > 0 ? d.names.join(", ") : "Chua co ai submit";
+        var nl  = b.names.length > 0 ? b.names.join(", ") : "Chua co du lieu";
+        var tooltipBody = groupByWeek
+          ? b.count + " ngay co submission<br><span style=\"color:var(--text-secondary);font-size:11px\">" + nl + "</span>"
+          : b.count + "/" + window._duTotal + " nguoi submit<br><span style=\"color:var(--text-secondary);font-size:11px\">" + nl + "</span>";
         return '<div class="chart-col">' +
           '<div class="chart-bar-wrap">' +
-            '<div class="chart-tooltip"><strong>' + d.ds + '</strong><br>' + d.count + '/' + window._duTotal + ' nguoi submit<br>' +
-            '<span style="color:var(--text-secondary);font-size:11px">' + nl + '</span></div>' +
+            '<div class="chart-tooltip"><strong>' + b.tooltip + '</strong><br>' + tooltipBody + '</div>' +
             '<div class="chart-bar" style="height:' + Math.max(pct, 4) + '%;background:' + bc + '"></div>' +
           '</div>' +
-          '<div class="chart-label">' + d.lbl + '</div>' +
-          '<div class="chart-count">' + d.count + '</div>' +
+          '<div class="chart-label" style="font-size:' + (groupByWeek ? "9px" : "11px") + '">' + b.lbl + '</div>' +
+          '<div class="chart-count">' + b.count + '</div>' +
         '</div>';
       }).join("");
     };
@@ -229,17 +269,25 @@ window.TOOL_REGISTRY.push({
       : data.allTasks.map(function(t) {
           var pct = parseInt(t.progress||0);
           var pc  = pct===100?"done":pct>=60?"high":pct>=30?"medium":"low";
+          var rawTime = (t.timeSpent || "").trim();
+          var safeTime = /^[\d.]+h?$/.test(rawTime) ? rawTime : "—";
           return '<div class="task-row">' +
             '<div class="task-title-cell">' + (t.title||"—") + '</div>' +
             '<div class="task-member-cell">' + (t.memberName||"—") + '</div>' +
-            '<div class="progress-badge ' + pc + '">' + (t.progress||"—") + '</div>' +
-            '<div class="time-badge">' + (t.timeSpent||"—") + '</div>' +
+            '<div class="progress-badge ' + pc + '" style="text-align:center">' + (t.progress||"—") + '</div>' +
+            '<div class="time-badge">' + safeTime + '</div>' +
           '</div>';
         }).join("");
 
     var tasksHTML =
       '<div class="task-breakdown">' +
         '<div class="section-header"><span class="section-title">Chi tiet tasks</span><span class="section-meta">' + data.allTasks.length + ' tasks</span></div>' +
+        '<div class="task-row task-header">' +
+          '<div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">Task</div>' +
+          '<div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">Thanh vien</div>' +
+          '<div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);text-align:center">Progress</div>' +
+          '<div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);text-align:right">Time</div>' +
+        '</div>' +
         taskRowsHTML +
       '</div>';
 
