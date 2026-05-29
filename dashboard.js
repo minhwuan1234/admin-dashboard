@@ -149,6 +149,15 @@ async function openToolDetail(toolId) {
     catch (e) { html = '<div class="state-error">Render error: ' + e.message + '</div>'; }
   }
   $("detail-body").innerHTML = html;
+
+  // After DOM inject: init chart + dropdown if present
+  var chartRange = document.getElementById("chart-range");
+  if (chartRange && window._buildDUChart) {
+    window._buildDUChart(parseInt(chartRange.value));
+    chartRange.addEventListener("change", function() {
+      window._buildDUChart(parseInt(this.value));
+    });
+  }
 }
 
 function backToOverview() {
