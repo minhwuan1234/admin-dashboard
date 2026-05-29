@@ -246,30 +246,20 @@ window.TOOL_REGISTRY.push({
       var progCell = avgProg !== null
         ? '<span class="progress-badge ' + (avgProg===100?"done":avgProg>=60?"high":"medium") + '">' + avgProg + '%</span>'
         : '<span style="color:var(--text-muted)">—</span>';
-      var totalSubmits = submitCounts[m.userId] || 0;
       return '<tr>' +
         '<td><span style="font-weight:500">' + m.name + '</span>' + (m.message ? '<br><span style="font-size:11px;color:var(--text-muted)">' + m.message.substring(0,80) + (m.message.length>80?"…":"") + '</span>' : '') + '</td>' +
         '<td><span class="status-pill ' + m.status + '">' + (m.status==="submitted"?"✓ Da submit":"✗ Chua submit") + '</span></td>' +
         '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">' + (utils ? utils.formatTime(m.submittedAt) : "—") + '</td>' +
         '<td style="text-align:center">' + progCell + '</td>' +
         '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">' + (m.tasks.length > 0 ? m.tasks.length + " task" : "—") + '</td>' +
-        '<td style="text-align:center;font-family:var(--font-mono);font-size:13px;font-weight:500;color:var(--text-primary)">' + (totalSubmits > 0 ? totalSubmits : "—") + '</td>' +
       '</tr>';
     }).join("");
-
-    // Tinh tong so lan submit cua moi member tu submissions history
-    var submitCounts = {};
-    (data._rawSubmissions || []).forEach(function(s) {
-      if (s.userId && s.userId.startsWith("ou_")) {
-        submitCounts[s.userId] = (submitCounts[s.userId] || 0) + 1;
-      }
-    });
 
     var membersHTML =
       '<div class="members-section">' +
         '<div class="section-header"><span class="section-title">Trang thai submit hom nay</span><span class="section-meta">' + data.submittedCount + '/' + data.totalMembers + ' members</span></div>' +
         '<table class="members-table"><thead><tr>' +
-          '<th>Thanh vien</th><th>Trang thai</th><th>Gio submit</th><th style="text-align:center">Avg progress</th><th>Tasks</th><th style="text-align:center">Total submits</th>' +
+          '<th>Thanh vien</th><th>Trang thai</th><th>Gio submit</th><th style="text-align:center">Avg progress</th><th>Tasks</th>' +
         '</tr></thead><tbody>' + rows + '</tbody></table>' +
       '</div>';
 
@@ -298,7 +288,6 @@ window.TOOL_REGISTRY.push({
           '<div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);text-align:center">Progress</div>' +
           '<div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);text-align:right">Time</div>' +
         '</div>' +
-        '<div style="height:1px;background:var(--border);margin:0 20px"></div>' +
         taskRowsHTML +
       '</div>';
 
