@@ -61,20 +61,21 @@ window.TOOL_REGISTRY.push({
     }));
 
     // Fetch 7 ngay submissions count (chi fetch folder listing khong duoc, nen fetch tung member)
-    var chartDays = [];
-    await Promise.all(days.map(async function(day) {
+    var chartDays = new Array(days.length);
+    await Promise.all(days.map(async function(day, idx) {
       var morningCount = 0, eveningCount = 0;
       await Promise.all(memberIds.map(async function(uid) {
         var mUrl = urls.reportsBase + day.dateStr + "/morning/" + uid + ".json?" + Date.now();
         var eUrl = urls.reportsBase + day.dateStr + "/evening/" + uid + ".json?" + Date.now();
-        var [m, e] = await Promise.all([
+        var results = await Promise.all([
           fetch(mUrl).then(function(r) { return r.ok; }).catch(function() { return false; }),
           fetch(eUrl).then(function(r) { return r.ok; }).catch(function() { return false; })
         ]);
-        if (m) morningCount++;
-        if (e) eveningCount++;
+        if (results[0]) morningCount++;
+        if (results[1]) eveningCount++;
       }));
-      chartDays.push({ dateStr: day.dateStr, label: day.label, morning: morningCount, evening: eveningCount });
+      // Giu dung vi tri bang idx thay vi push de dam bao thu tu
+      chartDays[idx] = { dateStr: day.dateStr, label: day.label, morning: morningCount, evening: eveningCount };
     }));
 
     var totalMembers = memberIds.length;
