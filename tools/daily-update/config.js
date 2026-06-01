@@ -33,9 +33,15 @@ window.TOOL_REGISTRY.push({
       utils.fetchJson(urls.dailyTasks,  true),
       utils.fetchJson(urls.responses,   true),
       utils.fetchJson(urls.members,     true),
-      utils.fetchJson(urls.submissions, true).catch(function() { return []; })
+      utils.fetchJson(urls.submissions, true).catch(function() { return []; }),
+      fetch("https://api.github.com/repos/minhwuan1234/daily-update-task-process-pm/commits?path=responses.json&per_page=1")
+        .then(function(r) { return r.json(); })
+        .then(function(d) { return (d && d[0]) ? d[0].commit.committer.date : null; })
+        .catch(function() { return null; })
     ]);
-    return this._process(results[0], results[1], results[2], results[3], utils);
+    var data = this._process(results[0], results[1], results[2], results[3], utils);
+    data._lastUpdated = results[4];
+    return data;
   },
 
   _process: function(daily, responses, members, submissions, utils) {
@@ -109,7 +115,12 @@ window.TOOL_REGISTRY.push({
     var rate = data.submissionRate;
     var rateColor = rate >= 80 ? "green" : rate >= 50 ? "amber" : "red";
     var barColor  = rate >= 80 ? "" : rate >= 50 ? "amber" : "red";
-    return '<div class="tool-metrics">' +
+    var versionTag = data._lastUpdated
+      ? '<div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:8px">' +
+          new Date(data._lastUpdated).toLocaleString("vi-VN", {timeZone:"Asia/Ho_Chi_Minh"}) +
+        '</div>'
+      : '';
+    return versionTag + '<div class="tool-metrics">' +
       '<div class="tool-metric"><span class="metric-value ' + rateColor + '">' + rate + '%</span><span class="metric-label">Ti le submit</span></div>' +
       '<div class="tool-metric"><span class="metric-value green">' + data.submittedCount + '/' + data.totalMembers + '</span><span class="metric-label">Da submit</span></div>' +
       '<div class="tool-metric"><span class="metric-value ' + (data.missingCount === 0 ? "green" : "red") + '">' + data.missingCount + '</span><span class="metric-label">Chua submit</span></div>' +
@@ -355,6 +366,7 @@ window.TOOL_REGISTRY.push({
           '<div>' +
             '<h2 class="tool-info-name">Daily Task Update Process PM</h2>' +
             '<p class="tool-info-tagline">He thong tracking standup hang ngay cho team F.Learning Studio</p>' +
+          (data._lastUpdated ? '<p style="font-size:11px;color:var(--text-muted);margin-top:6px;font-family:var(--font-mono)">Last updated: ' + new Date(data._lastUpdated).toLocaleString("vi-VN", {timeZone:"Asia/Ho_Chi_Minh"}) + '</p>' : '') +
           '</div>' +
         '</div>' +
 
