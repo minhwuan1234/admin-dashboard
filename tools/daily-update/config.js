@@ -246,7 +246,7 @@ window.TOOL_REGISTRY.push({
       var progCell = avgProg !== null
         ? '<span class="progress-badge ' + (avgProg===100?"done":avgProg>=60?"high":"medium") + '">' + avgProg + '%</span>'
         : '<span style="color:var(--text-muted)">—</span>';
-      var totalSubmits = submitCounts[m.userId] || 0;
+      var totalSubmits = (submitCounts && m && m.userId) ? (submitCounts[m.userId] || 0) : 0;
       return '<tr>' +
         '<td><span style="font-weight:500">' + m.name + '</span>' + (m.message ? '<br><span style="font-size:11px;color:var(--text-muted)">' + m.message.substring(0,80) + (m.message.length>80?"…":"") + '</span>' : '') + '</td>' +
         '<td><span class="status-pill ' + m.status + '">' + (m.status==="submitted"?"✓ Da submit":"✗ Chua submit") + '</span></td>' +
@@ -259,8 +259,9 @@ window.TOOL_REGISTRY.push({
 
     // Tinh tong so lan submit cua moi member tu submissions history
     var submitCounts = {};
-    (data._rawSubmissions || []).forEach(function(s) {
-      if (s.userId && s.userId.startsWith("ou_")) {
+    var rawSubs = (data && data._rawSubmissions) ? data._rawSubmissions : [];
+    rawSubs.forEach(function(s) {
+      if (s && s.userId && s.userId.startsWith("ou_")) {
         submitCounts[s.userId] = (submitCounts[s.userId] || 0) + 1;
       }
     });
