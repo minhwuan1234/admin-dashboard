@@ -41,7 +41,7 @@
   --ease:         cubic-bezier(0.22, 1, 0.36, 1);
 
   /* Task/Progress column widths — thay doi 1 cho doi ca 2 */
-  --col-task-w:     200px;
+  --col-task-w:     240px;
   --col-progress-w: 80px;
 }
 
@@ -407,9 +407,9 @@ body {
 /* Cot Thanh vien — co dinh */
 .members-table th:nth-child(1),
 .members-table td:nth-child(1) {
-  width: 130px;
+  width: 2400px;
   min-width: 100px;
-  max-width: 130px;
+  max-width: 240px;
 }
 
 /* Cot Task — dong deu nhau */
