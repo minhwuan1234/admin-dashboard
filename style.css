@@ -278,7 +278,7 @@ body {
 .members-table th.col-progress + th.col-task,
 .members-table td.col-progress + td.col-task {
   border-left: 1px solid var(--border-strong);
-  padding-left: 32px;
+  padding-left: 12px;
 }
 
 /* Cot Progress — co dinh nho, can giua */
