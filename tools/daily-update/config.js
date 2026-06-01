@@ -240,34 +240,51 @@ window.TOOL_REGISTRY.push({
       if (a.status === b.status) return a.name.localeCompare(b.name);
       return a.status === "submitted" ? -1 : 1;
     }).map(function(m) {
-      var avgProg = m.tasks.length > 0
-        ? Math.round(m.tasks.reduce(function(s,t) { return s + parseInt(t.progress||0); }, 0) / m.tasks.length)
-        : null;
-      var progCell = avgProg !== null
-        ? '<span class="progress-badge ' + (avgProg===100?"done":avgProg>=60?"high":"medium") + '">' + avgProg + '%</span>'
-        : '<span style="color:var(--text-muted)">—</span>';
       var totalSubmits = (submitCounts && m && m.userId) ? (submitCounts[m.userId] || 0) : 0;
+      var submitCell = totalSubmits > 0
+        ? '<span style="font-family:var(--font-mono);font-weight:600;color:var(--text-primary)">' + totalSubmits + '</span><span style="color:var(--text-muted);font-size:11px"> /30</span>'
+        : '<span style="color:var(--text-muted)">—</span>';
+
+      // Tung task rieng le
+      var taskLines = m.tasks.length > 0
+        ? m.tasks.map(function(t) {
+            var pct = parseInt(t.progress||0);
+            var pc  = pct===100?"done":pct>=60?"high":"medium";
+            var rawTime = (t.timeSpent||"").trim();
+            var safeTime = /^[\d.]+h?$/.test(rawTime) ? rawTime : "";
+            return '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border)">' +
+              '<span style="flex:1;font-size:12px;color:var(--text-secondary);line-height:1.4">' + (t.title||"—") + '</span>' +
+              '<span class="progress-badge ' + pc + '" style="flex-shrink:0">' + (t.progress||"—") + '</span>' +
+              (safeTime ? '<span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);flex-shrink:0;min-width:28px;text-align:right">' + safeTime + '</span>' : '') +
+            '</div>';
+          }).join("") +
+          (m.message ? '<div style="font-size:11px;color:var(--text-muted);padding-top:4px">📎 ' + m.message.substring(0,80) + (m.message.length>80?"…":"") + '</div>' : "")
+        : '<span style="color:var(--text-muted);font-size:12px">—</span>';
+
       return '<tr>' +
-        '<td><span style="font-weight:500">' + m.name + '</span>' + (m.message ? '<br><span style="font-size:11px;color:var(--text-muted)">' + m.message.substring(0,80) + (m.message.length>80?"…":"") + '</span>' : '') + '</td>' +
-        '<td><span class="status-pill ' + m.status + '">' + (m.status==="submitted"?"✓ Da submit":"✗ Chua submit") + '</span></td>' +
-        '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">' + (utils ? utils.formatTime(m.submittedAt) : "—") + '</td>' +
-        '<td style="text-align:center;vertical-align:middle">' + progCell + '</td>' +
-        '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">' + (m.tasks.length > 0 ? m.tasks.length + " task" : "—") + '</td>' +
-        '<td style="text-align:center;font-family:var(--font-mono);font-size:13px;font-weight:500;color:var(--text-primary)">' + (totalSubmits > 0 ? totalSubmits : "—") + '</td>' +
+        '<td style="font-weight:500;vertical-align:top;padding-top:14px">' + m.name + '</td>' +
+        '<td style="vertical-align:top;padding-top:14px"><span class="status-pill ' + m.status + '">' + (m.status==="submitted"?"✓ Da submit":"✗ Chua submit") + '</span></td>' +
+        '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);vertical-align:top;padding-top:14px">' + (utils ? utils.formatTime(m.submittedAt) : "—") + '</td>' +
+        '<td style="vertical-align:top;padding-top:10px">' + taskLines + '</td>' +
+        '<td style="text-align:center;vertical-align:top;padding-top:14px">' + submitCell + '</td>' +
       '</tr>';
     }).join("");
 
-    // Tinh tong so lan submit = submissions lich su + response hom nay
+    // Tinh tong submit trong 30 ngay gan nhat
+    var now30 = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
+    var cutoff = new Date(now30); cutoff.setDate(cutoff.getDate() - 29);
+    var cutoffStr = cutoff.getFullYear()+"-"+String(cutoff.getMonth()+1).padStart(2,"0")+"-"+String(cutoff.getDate()).padStart(2,"0");
+
     var submitCounts = {};
     var rawSubs = (data && data._rawSubmissions) ? data._rawSubmissions : [];
     rawSubs.forEach(function(s) {
-      if (s && s.userId && s.userId.startsWith("ou_")) {
+      if (s && s.userId && s.userId.startsWith("ou_") && s.date >= cutoffStr) {
         submitCounts[s.userId] = (submitCounts[s.userId] || 0) + 1;
       }
     });
     // Them response hom nay neu chua co trong submissions
-    var today = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
-    var todayStr = today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0")+"-"+String(today.getDate()).padStart(2,"0");
+    var today30 = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
+    var todayStr = today30.getFullYear()+"-"+String(today30.getMonth()+1).padStart(2,"0")+"-"+String(today30.getDate()).padStart(2,"0");
     (data.responseList || []).forEach(function(r) {
       if (!r || !r.userId) return;
       var alreadyCounted = rawSubs.some(function(s) { return s.userId === r.userId && s.date === todayStr; });
@@ -278,7 +295,7 @@ window.TOOL_REGISTRY.push({
       '<div class="members-section">' +
         '<div class="section-header"><span class="section-title">Trang thai submit hom nay</span><span class="section-meta">' + data.submittedCount + '/' + data.totalMembers + ' members</span></div>' +
         '<table class="members-table"><thead><tr>' +
-          '<th>Thanh vien</th><th>Trang thai</th><th>Gio submit</th><th style="text-align:center">Avg progress</th><th>Tasks</th><th style="text-align:center">Total submits</th>' +
+          '<th>Thanh vien</th><th>Trang thai</th><th>Gio submit</th><th>Tasks</th><th style="text-align:center">Submit / 30 ngay</th>' +
         '</tr></thead><tbody>' + rows + '</tbody></table>' +
       '</div>';
 
