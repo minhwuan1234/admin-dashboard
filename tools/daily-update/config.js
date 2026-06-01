@@ -242,6 +242,16 @@ window.TOOL_REGISTRY.push({
         '</div>';
       }).join("");
 
+      // Tooltip position theo mouse
+      container.querySelectorAll(".chart-col").forEach(function(col) {
+        var tip = col.querySelector(".chart-tooltip");
+        if (!tip) return;
+        col.addEventListener("mousemove", function(e) {
+          tip.style.left = e.clientX + "px";
+          tip.style.top  = (e.clientY - tip.offsetHeight - 12) + "px";
+        });
+      });
+
       // Click handler: fetch snapshot va hien thi ben duoi chart
       container.querySelectorAll(".chart-col--clickable").forEach(function(col) {
         col.addEventListener("click", function() {
