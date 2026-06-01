@@ -269,8 +269,8 @@ window.TOOL_REGISTRY.push({
           var name = memberNames[r.uid] || r.uid;
           var mTime = r.morning ? new Intl.DateTimeFormat("vi-VN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Ho_Chi_Minh"}).format(new Date(r.morning.submittedAt)) : "—";
           var eTime = r.evening ? new Intl.DateTimeFormat("vi-VN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Ho_Chi_Minh"}).format(new Date(r.evening.submittedAt)) : "—";
-          var mCell = r.morning ? '<span class="status-pill submitted" style="font-size:10px">☀️ Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + mTime + '</span>' : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
-          var eCell = r.evening ? '<span class="status-pill submitted" style="font-size:10px">🌙 Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + eTime + '</span>' : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
+          var mCell = r.morning ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">☀️ Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + mTime + '</span>' : '<span class="status-pill missing" style="font-size:10px;white-space:nowrap">✗ Chua</span>';
+          var eCell = r.evening ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">🌙 Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + eTime + '</span>' : '<span class="status-pill missing" style="font-size:10px;white-space:nowrap">✗ Chua</span>';
 
           var taskCols = "";
           for (var i = 0; i < maxT; i++) {
@@ -338,11 +338,11 @@ window.TOOL_REGISTRY.push({
       var eTime   = evening ? (utils ? utils.formatTime(evening.submittedAt) : "—") : "—";
 
       var mCell = morning
-        ? '<span class="status-pill submitted" style="font-size:10px">☀️ Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + mTime + '</span>'
-        : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
+        ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">☀️ Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + mTime + '</span>'
+        : '<span class="status-pill missing" style="font-size:10px;white-space:nowrap">✗ Chua</span>';
       var eCell = evening
-        ? '<span class="status-pill submitted" style="font-size:10px">🌙 Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + eTime + '</span>'
-        : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
+        ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">🌙 Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + eTime + '</span>'
+        : '<span class="status-pill missing" style="font-size:10px;white-space:nowrap">✗ Chua</span>';
 
       var taskCols = "";
       for (var ti = 0; ti < maxTasks; ti++) {
