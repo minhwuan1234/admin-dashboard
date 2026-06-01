@@ -162,16 +162,15 @@ window.TOOL_REGISTRY.push({
         var mp = Math.round(d.morning / max * 100);
         var ep = Math.round(d.evening / max * 100);
         var tipHtml = '<strong>' + d.dateStr + '</strong><br>☀️ Morning: ' + d.morning + '/' + max + '<br>🌙 Evening: ' + d.evening + '/' + max;
+        var mBg = mp >= 80 ? "var(--green)" : mp > 0 ? "var(--accent)" : "var(--bg-hover)";
+        var eBg = ep >= 80 ? "var(--blue)"  : ep > 0 ? "var(--yellow)" : "var(--bg-hover)";
         return '<div class="chart-col" data-tip="' + tipHtml.replace(/"/g, "&quot;") + '" data-date="' + d.dateStr + '">' +
-          '<div class="chart-bar-wrap" style="gap:3px">' +
-            '<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end">' +
-              '<div style="width:100%;border-radius:3px 3px 0 0;background:' + (mp >= 80 ? "var(--green)" : mp > 0 ? "var(--accent)" : "var(--bg-hover)") + ';height:' + Math.max(mp, 4) + '%;opacity:0.9"></div>' +
-            '</div>' +
-            '<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end">' +
-              '<div style="width:100%;border-radius:3px 3px 0 0;background:' + (ep >= 80 ? "var(--blue)" : ep > 0 ? "var(--yellow)" : "var(--bg-hover)") + ';height:' + Math.max(ep, 4) + '%;opacity:0.9"></div>' +
-            '</div>' +
+          '<div class="chart-bar-wrap" style="gap:3px;align-items:flex-end">' +
+            '<div class="chart-bar" style="flex:1;height:' + Math.max(mp, 3) + '%;background:' + mBg + ';border-radius:3px 3px 0 0"></div>' +
+            '<div class="chart-bar" style="flex:1;height:' + Math.max(ep, 3) + '%;background:' + eBg + ';border-radius:3px 3px 0 0"></div>' +
           '</div>' +
           '<div class="chart-label">' + d.label + '</div>' +
+          '<div class="chart-count">' + d.morning + '/' + d.evening + '</div>' +
         '</div>';
       }).join("");
 
