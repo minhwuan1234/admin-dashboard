@@ -232,9 +232,9 @@ window.TOOL_REGISTRY.push({
           ? b.count + " ngay co submission<br><span style=\"color:var(--text-secondary);font-size:11px\">" + nl + "</span>"
           : b.count + "/" + window._duTotal + " nguoi submit<br><span style=\"color:var(--text-secondary);font-size:11px\">" + nl + "</span>";
         var clickable = b.count > 0 && !groupByWeek ? "chart-col--clickable" : "";
-        return '<div class="chart-col ' + clickable + '" data-date="' + b.dateStr + '" data-has-data="' + (b.count > 0 ? "1" : "0") + '">' +
+        var tipHtml = '<strong>' + b.tooltip + '</strong><br>' + tooltipBody + (b.count > 0 && !groupByWeek ? '<br><span style="color:var(--accent);font-size:10px">↓ Click de xem chi tiet</span>' : '');
+        return '<div class="chart-col ' + clickable + '" data-date="' + b.dateStr + '" data-has-data="' + (b.count > 0 ? "1" : "0") + '" data-tip="' + tipHtml.replace(/"/g, "&quot;") + '">' +
           '<div class="chart-bar-wrap">' +
-            '<div class="chart-tooltip"><strong>' + b.tooltip + '</strong><br>' + tooltipBody + (b.count > 0 && !groupByWeek ? '<br><span style="color:var(--accent);font-size:10px">↓ Click de xem chi tiet</span>' : '') + '</div>' +
             '<div class="chart-bar" style="height:' + Math.max(pct, 4) + '%;background:' + bc + '"></div>' +
           '</div>' +
           '<div class="chart-label" style="font-size:' + (groupByWeek ? "9px" : "11px") + '">' + b.lbl + '</div>' +
@@ -242,13 +242,28 @@ window.TOOL_REGISTRY.push({
         '</div>';
       }).join("");
 
-      // Tooltip position theo mouse
+      // Global tooltip div
+      var globalTip = document.getElementById("_du_global_tip");
+      if (!globalTip) {
+        globalTip = document.createElement("div");
+        globalTip.id = "_du_global_tip";
+        globalTip.style.cssText = "position:fixed;z-index:99999;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:6px;padding:8px 12px;font-size:12px;color:var(--text-primary);white-space:nowrap;line-height:1.6;pointer-events:none;display:none;font-family:var(--font-body)";
+        document.body.appendChild(globalTip);
+      }
+
       container.querySelectorAll(".chart-col").forEach(function(col) {
-        var tip = col.querySelector(".chart-tooltip");
-        if (!tip) return;
+        col.addEventListener("mouseenter", function(e) {
+          var tip = col.dataset.tip;
+          if (!tip) return;
+          globalTip.innerHTML = tip.replace(/&quot;/g, '"');
+          globalTip.style.display = "block";
+        });
         col.addEventListener("mousemove", function(e) {
-          tip.style.left = e.clientX + "px";
-          tip.style.top  = (e.clientY - tip.offsetHeight - 12) + "px";
+          globalTip.style.left = (e.clientX - globalTip.offsetWidth / 2) + "px";
+          globalTip.style.top  = (e.clientY - globalTip.offsetHeight - 14) + "px";
+        });
+        col.addEventListener("mouseleave", function() {
+          globalTip.style.display = "none";
         });
       });
 
