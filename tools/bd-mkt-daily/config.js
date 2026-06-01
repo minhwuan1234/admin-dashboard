@@ -18,10 +18,10 @@ window.TOOL_REGISTRY.push({
   fetchData: async function(utils) {
     var urls = this._urls;
 
-    // Lay 7 ngay gan nhat
+    // Lay 30 ngay gan nhat de co du data cho tat ca range
     var days = [];
     var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
-    for (var i = 6; i >= 0; i--) {
+    for (var i = 29; i >= 0; i--) {
       var d = new Date(now); d.setDate(d.getDate() - i);
       var ds = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
       var lbl = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
@@ -146,10 +146,13 @@ window.TOOL_REGISTRY.push({
     window._bdChartDays = data.chartDays;
     window._bdTotal     = data.totalMembers;
 
-    window._buildBDChart = function() {
+    window._buildBDChart = function(n) {
       var container = document.getElementById("bd-chart-container");
       if (!container) return;
-      var days = window._bdChartDays || [];
+      n = n || 7;
+      var allDays = window._bdChartDays || [];
+      // Lay n ngay cuoi (moi nhat o cuoi mang = ben phai chart)
+      var days = allDays.slice(-n);
       var max  = Math.max(window._bdTotal, 1);
       var hasData = days.some(function(d) { return d.morning > 0 || d.evening > 0; });
 
@@ -199,10 +202,18 @@ window.TOOL_REGISTRY.push({
     var chartHTML =
       '<div class="members-section" style="margin-bottom:24px">' +
         '<div class="section-header">' +
-          '<span class="section-title">7 ngay gan nhat</span>' +
-          '<div style="display:flex;gap:12px;align-items:center;font-size:11px;color:var(--text-muted)">' +
-            '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--accent);display:inline-block"></span>Morning</span>' +
-            '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--yellow);display:inline-block"></span>Evening</span>' +
+          '<span class="section-title">Lich su submit</span>' +
+          '<div style="display:flex;gap:12px;align-items:center">' +
+            '<div style="display:flex;gap:10px;align-items:center;font-size:11px;color:var(--text-muted)">' +
+              '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--accent);display:inline-block"></span>Morning</span>' +
+              '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--yellow);display:inline-block"></span>Evening</span>' +
+            '</div>' +
+            '<select id="bd-chart-range" style="background:var(--bg-hover);border:1px solid var(--border-strong);color:var(--text-primary);font-size:12px;padding:4px 10px;border-radius:var(--radius-sm);cursor:pointer;outline:none">' +
+              '<option value="7" selected>7 ngay</option>' +
+              '<option value="14">2 tuan</option>' +
+              '<option value="21">3 tuan</option>' +
+              '<option value="30">1 thang</option>' +
+            '</select>' +
           '</div>' +
         '</div>' +
         '<div id="bd-chart-container" class="chart-wrap"></div>' +
@@ -306,7 +317,11 @@ window.TOOL_REGISTRY.push({
       if (info)     info.innerHTML     = window._bdInfoHTML;
 
       setTimeout(function() {
-        if (window._buildBDChart) window._buildBDChart();
+        if (window._buildBDChart) {
+          window._buildBDChart(7);
+          var sel = document.getElementById("bd-chart-range");
+          if (sel) sel.addEventListener("change", function() { window._buildBDChart(parseInt(this.value)); });
+        }
       }, 50);
 
       var btns  = document.querySelectorAll(".tab-btn");
@@ -319,7 +334,12 @@ window.TOOL_REGISTRY.push({
           var target = document.getElementById("tab-" + btn.dataset.tab);
           if (target) { target.style.display = "block"; target.classList.add("active"); }
           if (btn.dataset.tab === "tracking") {
-            setTimeout(function() { if (window._buildBDChart) window._buildBDChart(); }, 50);
+            setTimeout(function() {
+              if (window._buildBDChart) {
+                var sel = document.getElementById("bd-chart-range");
+                window._buildBDChart(sel ? parseInt(sel.value) : 7);
+              }
+            }, 50);
           }
         });
       });
