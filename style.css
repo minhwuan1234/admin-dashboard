@@ -552,6 +552,17 @@ body {
   font-size: 13.5px;
   border-bottom: 1px solid var(--border);
   color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.members-table th:nth-child(4),
+.members-table td:nth-child(4) {
+  text-align: center;
+}
+
+.members-table th:nth-child(6),
+.members-table td:nth-child(6) {
+  text-align: center;
 }
 
 .members-table tr:last-child td { border-bottom: none; }
@@ -579,7 +590,7 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .task-row {
