@@ -179,7 +179,7 @@ window.TOOL_REGISTRY.push({
         var tipHtml = '<strong>' + d.dateStr + '</strong><br>☀️ Morning: ' + d.morning + '/' + max + '<br>🌙 Evening: ' + d.evening + '/' + max;
         var mBg = mp >= 80 ? "var(--green)" : mp > 0 ? "var(--accent)" : "var(--bg-hover)";
         var eBg = ep >= 80 ? "var(--blue)"  : ep > 0 ? "var(--yellow)" : "var(--bg-hover)";
-        return '<div class="chart-col" data-tip="' + tipHtml.replace(/"/g, "&quot;") + '" data-date="' + d.dateStr + '">' +
+        return '<div class="chart-col" data-tip="' + tipHtml.replace(/"/g, "&quot;") + '" data-date="' + d.dateStr + '" data-morning="' + d.morning + '" data-evening="' + d.evening + '">' +
           '<div class="chart-bar-wrap" style="gap:3px;align-items:flex-end">' +
             '<div class="chart-bar" style="flex:1;height:' + Math.max(mp, 3) + '%;background:' + mBg + ';border-radius:3px 3px 0 0"></div>' +
             '<div class="chart-bar" style="flex:1;height:' + Math.max(ep, 3) + '%;background:' + eBg + ';border-radius:3px 3px 0 0"></div>' +
@@ -208,11 +208,95 @@ window.TOOL_REGISTRY.push({
           globalTip.style.top  = (e.clientY - globalTip.offsetHeight - 14) + "px";
         });
         col.addEventListener("mouseleave", function() { globalTip.style.display = "none"; });
+
+        // Click -> fetch day detail
+        if (col.dataset.morning > 0 || col.dataset.evening > 0) {
+          col.style.cursor = "pointer";
+          col.addEventListener("click", function() {
+            var dateStr = col.dataset.date;
+            var detail  = document.getElementById("bd-day-detail");
+            if (!detail) return;
+            if (detail.dataset.activeDate === dateStr && detail.style.display !== "none") {
+              detail.style.display = "none";
+              detail.dataset.activeDate = "";
+              container.querySelectorAll(".chart-col--active").forEach(function(c) { c.classList.remove("chart-col--active"); });
+              return;
+            }
+            container.querySelectorAll(".chart-col--active").forEach(function(c) { c.classList.remove("chart-col--active"); });
+            col.classList.add("chart-col--active");
+            detail.dataset.activeDate = dateStr;
+            detail.style.display = "block";
+            detail.innerHTML = '<div class="state-loading" style="padding:20px"><div class="spinner"></div><p>Dang tai du lieu ngay ' + dateStr + '...</p></div>';
+            window._fetchBDDay(dateStr);
+          });
+        }
+      });
+    };
+
+    // Store refs for click fetch
+    window._bdMemberIds   = data.memberIds;
+    window._bdMemberNames = data.memberNames;
+    window._bdReportsBase = "https://raw.githubusercontent.com/minhwuan1234/BD-MKT-Daily-Update-Task/main/reports/";
+
+    window._fetchBDDay = function(dateStr) {
+      var detail     = document.getElementById("bd-day-detail");
+      var memberIds  = window._bdMemberIds  || [];
+      var memberNames= window._bdMemberNames|| {};
+      var base       = window._bdReportsBase;
+      if (!detail) return;
+
+      Promise.all(memberIds.map(function(uid) {
+        var t = Date.now();
+        return Promise.all([
+          fetch(base + dateStr + "/morning/" + uid + ".json?" + t).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
+          fetch(base + dateStr + "/evening/" + uid + ".json?" + t).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
+        ]).then(function(res) { return { uid: uid, morning: res[0], evening: res[1] }; });
+      })).then(function(results) {
+        var hasAny = results.some(function(r) { return r.morning || r.evening; });
+        if (!hasAny) {
+          detail.innerHTML = '<div class="state-empty" style="padding:24px"><i class="ti ti-inbox" style="font-size:28px"></i><p>Chua co du lieu cho ngay ' + dateStr + '</p></div>';
+          return;
+        }
+
+        var maxT = 0;
+        results.forEach(function(r) { if (r.morning && r.morning.tasks) maxT = Math.max(maxT, r.morning.tasks.length); });
+        maxT = Math.max(maxT, 1);
+
+        var ths = '<th>Thanh vien</th><th>Morning</th><th>Evening</th>';
+        for (var i = 0; i < maxT; i++) ths += '<th>Task ' + (i+1) + '</th><th>Plan</th><th>Actual</th><th>Time</th>';
+
+        var rows = results.map(function(r) {
+          var name = memberNames[r.uid] || r.uid;
+          var mTime = r.morning ? new Intl.DateTimeFormat("vi-VN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Ho_Chi_Minh"}).format(new Date(r.morning.submittedAt)) : "—";
+          var eTime = r.evening ? new Intl.DateTimeFormat("vi-VN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Ho_Chi_Minh"}).format(new Date(r.evening.submittedAt)) : "—";
+          var mCell = r.morning ? '<span class="status-pill submitted" style="font-size:10px">☀️ Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + mTime + '</span>' : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
+          var eCell = r.evening ? '<span class="status-pill submitted" style="font-size:10px">🌙 Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + eTime + '</span>' : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
+
+          var taskCols = "";
+          for (var i = 0; i < maxT; i++) {
+            var t      = r.morning && r.morning.tasks ? r.morning.tasks[i] : null;
+            var actual = r.evening && r.evening.tasks ? r.evening.tasks[i] : null;
+            var prog   = actual ? actual.progress : null;
+            var pc     = prog === "100%" ? "done" : prog && parseInt(prog) >= 60 ? "high" : "medium";
+            taskCols +=
+              '<td style="font-size:12px;color:var(--text-primary)">' + (t ? (t.title||"—") : "—") + '</td>' +
+              '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">' + (t ? (t.expectedTime||"—") : "—") + '</td>' +
+              '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+              '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">' + (actual && actual.timeSpent ? actual.timeSpent : "—") + '</td>';
+          }
+          return '<tr><td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name + '</td><td style="vertical-align:middle">' + mCell + '</td><td style="vertical-align:middle">' + eCell + '</td>' + taskCols + '</tr>';
+        }).join("");
+
+        detail.innerHTML =
+          '<div class="members-section" style="overflow-x:auto">' +
+            '<div class="section-header"><span class="section-title">Chi tiet ngay ' + dateStr + '</span><span class="section-meta">' + results.filter(function(r){return r.morning;}).length + ' morning · ' + results.filter(function(r){return r.evening;}).length + ' evening</span></div>' +
+            '<table class="members-table" style="min-width:100%;table-layout:auto"><thead><tr>' + ths + '</tr></thead><tbody>' + rows + '</tbody></table>' +
+          '</div>';
       });
     };
 
     var chartHTML =
-      '<div class="members-section" style="margin-bottom:24px">' +
+      '<div class="members-section" style="margin-bottom:0">' +
         '<div class="section-header">' +
           '<span class="section-title">Lich su submit</span>' +
           '<div style="display:flex;gap:12px;align-items:center">' +
