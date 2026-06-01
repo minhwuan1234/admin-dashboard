@@ -34,10 +34,14 @@ window.TOOL_REGISTRY.push({
     var members = await utils.fetchJson(urls.members, true).catch(function() { return {}; });
 
     // Fetch today's reports
-    var memberIds = Object.values(members).map(function(v) { return v.id || v; });
+    // Bo qua PM (Trang Liu, Hanh) — chi track member thuc su
+    var PM_NAMES = ["Trang Liu", "Hanh", "Hạnh"];
+    var memberIds = [];
     var memberNames = {};
     Object.entries(members).forEach(function(e) {
+      if (PM_NAMES.indexOf(e[0]) !== -1) return;
       var id = e[1].id || e[1];
+      memberIds.push(id);
       memberNames[id] = e[0];
     });
 
