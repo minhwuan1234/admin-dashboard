@@ -258,9 +258,9 @@ window.TOOL_REGISTRY.push({
           var pct = parseInt(t.progress||0);
           var pc  = pct===100?"done":pct>=60?"high":"medium";
           taskCols += '<td style="font-size:12px;color:var(--text-secondary);max-width:200px">' + (t.title||"—") + '</td>' +
-            '<td><span class="progress-badge ' + pc + '">' + (t.progress||"—") + '</span></td>';
+            '<td class="col-progress"><span class="progress-badge ' + pc + '">' + (t.progress||"—") + '</span></td>';
         } else {
-          taskCols += '<td style="color:var(--text-muted);font-size:12px">—</td><td></td>';
+          taskCols += '<td style="color:var(--text-muted);font-size:12px">—</td><td class="col-progress"></td>';
         }
       }
 
@@ -300,7 +300,7 @@ window.TOOL_REGISTRY.push({
         (function() {
           var maxTasks = Math.max.apply(null, data.memberStatuses.map(function(m) { return m.tasks.length || 0; }).concat([1]));
           var taskHeaders = "";
-          for (var i = 0; i < maxTasks; i++) taskHeaders += '<th>Task ' + (i+1) + '</th><th style="text-align:center">Progress</th>';
+          for (var i = 0; i < maxTasks; i++) taskHeaders += '<th>Task ' + (i+1) + '</th><th class="col-progress">Progress</th>';
           return '<table class="members-table"><thead><tr>' +
             '<th>Thanh vien</th><th>Trang thai</th><th>Gio submit</th>' + taskHeaders + '<th>Submit/30d</th>' +
           '</tr></thead><tbody>' + rows + '</tbody></table>';
