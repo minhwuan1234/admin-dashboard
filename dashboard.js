@@ -150,12 +150,13 @@ async function openToolDetail(toolId) {
   }
   $("detail-body").innerHTML = html;
 
-  // After DOM inject: init tabs + chart
-  // requestAnimationFrame ensures DOM is fully painted before init
+  // After DOM inject: init tabs — each tool registers its own _init[X]Tabs
   requestAnimationFrame(function() {
     requestAnimationFrame(function() {
-      if (window._initDUTabs) {
+      if (toolId === "daily-update" && window._initDUTabs) {
         window._initDUTabs();
+      } else if (toolId === "bd-mkt-daily" && window._initBDTabs) {
+        window._initBDTabs();
       } else {
         var chartRange = document.getElementById("chart-range");
         if (chartRange && window._buildDUChart) {
