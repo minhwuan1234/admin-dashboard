@@ -179,7 +179,7 @@ window.TOOL_REGISTRY.push({
           var lbl = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
           var subs  = window._duSubs.filter(function(s) { return s.date === ds; });
           var names = subs.map(function(s) { return s.memberName||s.userId; }).filter(function(x) { return x !== "Unknown"; });
-          buckets.push({ lbl: lbl, tooltip: ds, count: names.length, names: names, days: 1 });
+          buckets.push({ lbl: lbl, tooltip: ds, dateStr: ds, count: names.length, names: names, days: 1 });
         }
       } else {
         // Theo tuan — moi bucket = 7 ngay
@@ -484,8 +484,8 @@ window.TOOL_REGISTRY.push({
 
         /* Problem statement */
         '<div class="tool-info-section">' +
-          '<div class="tool-info-section-title"><i class="ti ti-alert-triangle"></i>Khi em vào check các task hiện tại thì đang thấy 1 vấn đề như sau --> PM đơn giản chỉ là giao task, brief --> team product xử lý task --> feedback --> loop, có lẽ vì chị Vi và chị Thư, anh DA đang là senior nên mọi người luôn đảm bảo được đầu ra và deadline, nhưng liệu cái process này còn đúng khi người làm là intern, vậy thì lúc này khi không có thói quen report khó khăn hoặc xin update lại deadline thì liệu PM có hoàn thành dược mục tiêu của khâu quản lý không ? (hoặc có thể mọi người nhắn tin riêng cho nhau nhưng đồng nghĩa với việc chị Ánh or chị Hà or chị Giang có thể bị miss thông tin)</div>' +
-          '<p class="tool-info-text"></p>' +
+          '<div class="tool-info-section-title"><i class="ti ti-alert-triangle"></i> Van de can giai quyet</div>' +
+          '<p class="tool-info-text">Them noi dung o day.</p>' +
         '</div>' +
 
         /* About */
