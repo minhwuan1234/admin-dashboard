@@ -40,8 +40,8 @@
   --ease:         cubic-bezier(0.22, 1, 0.36, 1);
 
   /* Task/Progress column widths — sua 2 bien nay de thay doi dong loat */
-  --col-task-w:     15%;
-  --col-progress-w: 72px;
+  --col-task-w:     16%;
+  --col-progress-w: auto;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -278,15 +278,14 @@ body {
 .members-table th.col-progress + th.col-task,
 .members-table td.col-progress + td.col-task {
   border-left: 1px solid var(--border-strong);
-  padding-left: 20px;
+  padding-left: 32px;
 }
 
 /* Cot Progress — co dinh nho, can giua */
 .members-table th.col-progress,
 .members-table td.col-progress {
-  width: var(--col-progress-w);
-  min-width: var(--col-progress-w);
-  max-width: var(--col-progress-w);
+  width: auto;
+  white-space: nowrap;
   text-align: center;
 }
 
