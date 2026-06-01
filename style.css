@@ -569,7 +569,8 @@ body {
 .members-table th.col-progress,
 .members-table td.col-progress {
   text-align: center;
-  width: 90px;
+  width: 90px; 
+  align-item: center;
 }
 
 .members-table tr:last-child td { border-bottom: none; }
