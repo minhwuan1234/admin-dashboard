@@ -560,9 +560,9 @@ body {
 /* Thanh vien column: fixed narrow width */
 .members-table th:nth-child(1),
 .members-table td:nth-child(1) {
-  width: 120px;
+  width: 240px;
   min-width: 100px;
-  max-width: 140px;
+  max-width: 240px;
 }
 
 /* Progress columns: center align */
