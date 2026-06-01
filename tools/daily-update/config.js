@@ -139,7 +139,7 @@ window.TOOL_REGISTRY.push({
     var tabBar =
       '<div class="tab-bar">' +
         '<button class="tab-btn active" data-tab="tracking"><i class="ti ti-chart-bar"></i> Tracking</button>' +
-        '<button class="tab-btn" data-tab="taskinfo"><i class="ti ti-list-check"></i> Thong tin task</button>' +
+        '<button class="tab-btn" data-tab="taskinfo"><i class="ti ti-list-check"></i> About</button>' +
       '</div>' +
       '<div id="tab-tracking" class="tab-pane active"></div>' +
       '<div id="tab-taskinfo" class="tab-pane" style="display:none"></div>';
@@ -372,8 +372,8 @@ window.TOOL_REGISTRY.push({
 
         /* Problem statement */
         '<div class="tool-info-section">' +
-          '<div class="tool-info-section-title"><i class="ti ti-alert-triangle"></i> Van de can giai quyet</div>' +
-          '<p class="tool-info-text">Them noi dung o day.</p>' +
+          '<div class="tool-info-section-title"><i class="ti ti-alert-triangle"></i> Problem Statement </div>' +
+          '<p class="tool-info-text">Khi em vào check các task hiện tại thì đang thấy 1 vấn đề như sau --> PM đơn giản chỉ là giao task, brief --> team product xử lý task --> feedback --> loop, có lẽ vì chị Vi và chị Thư, anh DA đang là senior nên mọi người luôn đảm bảo được đầu ra và deadline, nhưng liệu cái process này còn đúng khi người làm là intern, vậy thì lúc này khi không có thói quen report khó khăn hoặc xin update lại deadline thì liệu PM có hoàn thành dược mục tiêu của khâu quản lý không ? (hoặc có thể mọi người nhắn tin riêng cho nhau nhưng đồng nghĩa với việc chị Ánh or chị Hà or chị Giang có thể bị miss thông tin)</p>' +
         '</div>' +
 
         /* About */
