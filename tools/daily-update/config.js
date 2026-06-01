@@ -158,15 +158,17 @@ window.TOOL_REGISTRY.push({
       '</div>';
 
     /* Bar chart — render via window function, called after DOM inject */
-    window._duSubs  = data._rawSubmissions || [];
-    window._duTotal = data.totalMembers;
+    window._duSubs        = data._rawSubmissions || [];
+    window._duTotal       = data.totalMembers;
+    window._duResponseList = data.responseList || [];
+    window._duMemberStatuses = data.memberStatuses || [];
 
     window._buildDUChart = function(n) {
       var container = document.getElementById("chart-container");
       if (!container) return;
 
       // Nhom theo tuan neu range >= 30 ngay
-      var groupByWeek = n >= 30;
+      var groupByWeek = n >= 90;
 
       var now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
       var buckets = [];
@@ -267,6 +269,36 @@ window.TOOL_REGISTRY.push({
         });
       });
 
+      // Tinh submit count theo range dang chon
+      var nowRange = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
+      var cutoffRange = new Date(nowRange); cutoffRange.setDate(cutoffRange.getDate() - (n-1));
+      var cutoffRangeStr = cutoffRange.getFullYear()+"-"+String(cutoffRange.getMonth()+1).padStart(2,"0")+"-"+String(cutoffRange.getDate()).padStart(2,"0");
+      var todayRangeStr  = nowRange.getFullYear()+"-"+String(nowRange.getMonth()+1).padStart(2,"0")+"-"+String(nowRange.getDate()).padStart(2,"0");
+
+      window._duSubmitCounts = {};
+      (window._duSubs || []).forEach(function(s) {
+        if (s && s.userId && s.userId.startsWith("ou_") && s.date >= cutoffRangeStr) {
+          window._duSubmitCounts[s.userId] = (window._duSubmitCounts[s.userId] || 0) + 1;
+        }
+      });
+      (window._duResponseList || []).forEach(function(r) {
+        if (!r || !r.userId) return;
+        var already = (window._duSubs||[]).some(function(s) { return s.userId === r.userId && s.date === todayRangeStr; });
+        if (!already) window._duSubmitCounts[r.userId] = (window._duSubmitCounts[r.userId] || 0) + 1;
+      });
+
+      // Update submit count cells in members table
+      var memberRows = document.querySelectorAll(".du-member-row");
+      memberRows.forEach(function(row) {
+        var uid = row.dataset.uid;
+        var cell = row.querySelector(".du-submit-count");
+        if (!cell || !uid) return;
+        var count = window._duSubmitCounts[uid] || 0;
+        cell.innerHTML = count > 0
+          ? '<span style="font-family:var(--font-mono);font-weight:600;color:var(--text-primary)">' + count + '</span><span style="color:var(--text-muted);font-size:11px"> /' + n + 'd</span>'
+          : '<span style="color:var(--text-muted)">—</span>';
+      });
+
       // Click handler: fetch snapshot va hien thi ben duoi chart
       container.querySelectorAll(".chart-col--clickable").forEach(function(col) {
         col.addEventListener("click", function() {
@@ -357,10 +389,10 @@ window.TOOL_REGISTRY.push({
         '<div class="section-header">' +
           '<span class="section-title">Lich su submit</span>' +
           '<select id="chart-range" style="background:var(--bg-hover);border:1px solid var(--border-strong);color:var(--text-primary);font-size:12px;padding:4px 10px;border-radius:var(--radius-sm);cursor:pointer;outline:none">' +
-            '<option value="3">3 ngay gan nhat</option>' +
-            '<option value="7" selected="selected">7 ngay gan nhat</option>' +
-            '<option value="30">1 thang gan nhat</option>' +
-            '<option value="90">3 thang gan nhat</option>' +
+            '<option value="7" selected="selected">7 ngay</option>' +
+            '<option value="14">2 tuan</option>' +
+            '<option value="30">1 thang</option>' +
+            '<option value="90">3 thang</option>' +
           '</select>' +
         '</div>' +
         '<div id="chart-container" class="chart-wrap"></div>' +
@@ -395,7 +427,7 @@ window.TOOL_REGISTRY.push({
     }).map(function(m) {
       var totalSubmits = (submitCounts && m && m.userId) ? (submitCounts[m.userId] || 0) : 0;
       var submitCell = totalSubmits > 0
-        ? '<span style="font-family:var(--font-mono);font-weight:600;color:var(--text-primary)">' + totalSubmits + '</span><span style="color:var(--text-muted);font-size:11px"> /30</span>'
+        ? '<span style="font-family:var(--font-mono);font-weight:600;color:var(--text-primary)">' + totalSubmits + '</span><span style="color:var(--text-muted);font-size:11px"> /30d</span>'
         : '<span style="color:var(--text-muted)">—</span>';
 
       var maxTasks = Math.max.apply(null, data.memberStatuses.map(function(x) { return x.tasks.length || 0; }).concat([1]));
@@ -417,12 +449,12 @@ window.TOOL_REGISTRY.push({
         }
       }
 
-      return '<tr>' +
+      return '<tr class="du-member-row" data-uid="' + m.userId + '">' +
         '<td>' + nameCell + '</td>' +
         '<td>' + statusCell + '</td>' +
         '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">' + timeStr + '</td>' +
         taskCols +
-        '<td>' + submitCell + '</td>' +
+        '<td class="du-submit-count">' + submitCell + '</td>' +
       '</tr>';
     }).join("");
 
