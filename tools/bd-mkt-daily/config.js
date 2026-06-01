@@ -232,6 +232,20 @@ window.TOOL_REGISTRY.push({
       '</div>';
 
     /* ── Members table ── */
+    // Tinh max tasks de biet so cot can tao
+    var maxTasks = 0;
+    data.memberIds.forEach(function(uid) {
+      var m = data.todayMorning[uid];
+      if (m && m.tasks) maxTasks = Math.max(maxTasks, m.tasks.length);
+    });
+    maxTasks = Math.max(maxTasks, 1);
+
+    // Build header: Thanh vien | Morning | Evening | Task 1 | Plan | Actual | Task 2 | Plan | Actual ...
+    var thHeaders = '<th>Thanh vien</th><th>Morning</th><th>Evening</th>';
+    for (var ti = 0; ti < maxTasks; ti++) {
+      thHeaders += '<th>Task ' + (ti+1) + '</th><th>Plan</th><th>Actual</th><th>Time</th>';
+    }
+
     var memberRows = data.memberIds.map(function(uid) {
       var name    = data.memberNames[uid] || uid;
       var morning = data.todayMorning[uid];
@@ -246,54 +260,33 @@ window.TOOL_REGISTRY.push({
         ? '<span class="status-pill submitted" style="font-size:10px">🌙 Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + eTime + '</span>'
         : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
 
-      // Task rows: moi task 1 row
-      var taskRows = "";
-      if (morning && morning.tasks && morning.tasks.length > 0) {
-        taskRows = morning.tasks.map(function(t, i) {
-          var actual = evening && evening.tasks ? evening.tasks[i] : null;
-          var prog   = actual ? actual.progress : null;
-          var pc     = prog === "100%" ? "done" : prog && parseInt(prog) >= 60 ? "high" : "medium";
-          var actualTime = actual && actual.timeSpent ? actual.timeSpent : null;
+      var taskCols = "";
+      for (var ti = 0; ti < maxTasks; ti++) {
+        var t      = morning && morning.tasks ? morning.tasks[ti] : null;
+        var actual = evening && evening.tasks ? evening.tasks[ti] : null;
+        var prog   = actual ? actual.progress : null;
+        var pc     = prog === "100%" ? "done" : prog && parseInt(prog) >= 60 ? "high" : "medium";
 
-          return '<div style="padding:8px 0;border-bottom:1px solid var(--border)">' +
-            // Task title
-            '<div style="font-size:12px;color:var(--text-primary);font-weight:500;margin-bottom:6px">' +
-              (t.title||"—").substring(0,60) + (t.title && t.title.length>60?"…":"") +
-            '</div>' +
-            // Plan row
-            '<div style="display:flex;gap:16px;font-size:11px;color:var(--text-muted);margin-bottom:4px">' +
-              '<span>⏱ Plan: <span style="color:var(--text-secondary)">' + (t.expectedTime||"—") + '</span></span>' +
-              (t.output ? '<span>📋 Output: <span style="color:var(--text-secondary)">' + t.output.substring(0,40) + (t.output.length>40?"…":"") + '</span></span>' : '') +
-            '</div>' +
-            // Actual row
-            (actual ?
-              '<div style="display:flex;gap:16px;font-size:11px;align-items:center">' +
-                '<span style="color:var(--text-muted)">→ Actual: <span class="progress-badge ' + pc + '">' + prog + '</span></span>' +
-                (actualTime ? '<span style="color:var(--text-muted)">⏱ <span style="color:var(--text-secondary)">' + actualTime + '</span></span>' : '') +
-              '</div>'
-            : '<div style="font-size:11px;color:var(--text-muted)">→ Chua co bao cao chieu</div>') +
-          '</div>';
-        }).join("");
-      } else {
-        taskRows = '<span style="color:var(--text-muted);font-size:12px">—</span>';
+        taskCols +=
+          '<td style="font-size:12px;color:var(--text-primary)">' + (t ? (t.title||"—") : "—") + '</td>' +
+          '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">' + (t ? (t.expectedTime||"—") : "—") + '</td>' +
+          '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+          '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">' + (actual && actual.timeSpent ? actual.timeSpent : "—") + '</td>';
       }
 
       return '<tr>' +
-        '<td style="font-weight:500;vertical-align:top;padding-top:14px;white-space:nowrap">' + name + '</td>' +
-        '<td style="vertical-align:top;padding-top:12px">' + mCell + '</td>' +
-        '<td style="vertical-align:top;padding-top:12px">' + eCell + '</td>' +
-        '<td style="vertical-align:top;padding-top:8px">' + taskRows + '</td>' +
+        '<td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name + '</td>' +
+        '<td style="vertical-align:middle">' + mCell + '</td>' +
+        '<td style="vertical-align:middle">' + eCell + '</td>' +
+        taskCols +
       '</tr>';
     }).join("");
 
     var membersHTML =
-      '<div class="members-section">' +
+      '<div class="members-section" style="overflow-x:auto">' +
         '<div class="section-header"><span class="section-title">Trang thai hom nay</span><span class="section-meta">' + data.todayStr + '</span></div>' +
-        '<table class="members-table"><thead><tr>' +
-          '<th style="width:110px">Thanh vien</th>' +
-          '<th style="width:100px">Morning</th>' +
-          '<th style="width:100px">Evening</th>' +
-          '<th>Plan → Actual</th>' +
+        '<table class="members-table" style="min-width:100%;table-layout:auto"><thead><tr>' +
+          thHeaders +
         '</tr></thead><tbody>' + memberRows + '</tbody></table>' +
       '</div>';
 
