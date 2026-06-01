@@ -18,15 +18,16 @@ window.TOOL_REGISTRY.push({
   fetchData: async function(utils) {
     var urls = this._urls;
 
-    // Lay 30 ngay gan nhat de co du data cho tat ca range
-    var days = [];
+    // Lay 30 ngay gan nhat, thu tu tang dan (cu nhat -> moi nhat)
     var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+    var days = [];
     for (var i = 29; i >= 0; i--) {
       var d = new Date(now); d.setDate(d.getDate() - i);
       var ds = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
       var lbl = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
       days.push({ dateStr: ds, label: lbl });
     }
+    // days[0] = 29 ngay truoc, days[29] = hom nay — thu tu DUNG
 
     var todayStr = days[days.length - 1].dateStr;
 
@@ -61,12 +62,16 @@ window.TOOL_REGISTRY.push({
     }));
 
     // Fetch 7 ngay submissions count (chi fetch folder listing khong duoc, nen fetch tung member)
-    var chartDays = new Array(days.length);
+    // Fetch parallel nhung ghi vao dung vi tri idx de giu thu tu
+    var chartDays = days.map(function(d) {
+      return { dateStr: d.dateStr, label: d.label, morning: 0, evening: 0 };
+    });
     await Promise.all(days.map(async function(day, idx) {
       var morningCount = 0, eveningCount = 0;
       await Promise.all(memberIds.map(async function(uid) {
-        var mUrl = urls.reportsBase + day.dateStr + "/morning/" + uid + ".json?" + Date.now();
-        var eUrl = urls.reportsBase + day.dateStr + "/evening/" + uid + ".json?" + Date.now();
+        var t = Date.now();
+        var mUrl = urls.reportsBase + day.dateStr + "/morning/" + uid + ".json?" + t;
+        var eUrl = urls.reportsBase + day.dateStr + "/evening/" + uid + ".json?" + t;
         var results = await Promise.all([
           fetch(mUrl).then(function(r) { return r.ok; }).catch(function() { return false; }),
           fetch(eUrl).then(function(r) { return r.ok; }).catch(function() { return false; })
@@ -74,9 +79,11 @@ window.TOOL_REGISTRY.push({
         if (results[0]) morningCount++;
         if (results[1]) eveningCount++;
       }));
-      // Giu dung vi tri bang idx thay vi push de dam bao thu tu
-      chartDays[idx] = { dateStr: day.dateStr, label: day.label, morning: morningCount, evening: eveningCount };
+      chartDays[idx].morning = morningCount;
+      chartDays[idx].evening = eveningCount;
     }));
+    // Sort lai theo dateStr de chac chan thu tu dung
+    chartDays.sort(function(a, b) { return a.dateStr.localeCompare(b.dateStr); });
 
     var totalMembers = memberIds.length;
     var morningCount = Object.keys(todayMorning).length;
