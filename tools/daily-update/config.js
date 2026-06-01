@@ -11,7 +11,7 @@ window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 window.TOOL_REGISTRY.push({
   id:          "daily-update",
-  name:        "Daily Update",
+  name:        "Daily Task Update Process PM",
   description: "Tracking ti le submit standup hang ngay cua team.",
   icon:        "ti-square-check",
   status:      "active",
@@ -251,19 +251,27 @@ window.TOOL_REGISTRY.push({
         '<td><span style="font-weight:500">' + m.name + '</span>' + (m.message ? '<br><span style="font-size:11px;color:var(--text-muted)">' + m.message.substring(0,80) + (m.message.length>80?"…":"") + '</span>' : '') + '</td>' +
         '<td><span class="status-pill ' + m.status + '">' + (m.status==="submitted"?"✓ Da submit":"✗ Chua submit") + '</span></td>' +
         '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">' + (utils ? utils.formatTime(m.submittedAt) : "—") + '</td>' +
-        '<td>' + progCell + '</td>' +
+        '<td style="text-align:center;vertical-align:middle">' + progCell + '</td>' +
         '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted)">' + (m.tasks.length > 0 ? m.tasks.length + " task" : "—") + '</td>' +
         '<td style="text-align:center;font-family:var(--font-mono);font-size:13px;font-weight:500;color:var(--text-primary)">' + (totalSubmits > 0 ? totalSubmits : "—") + '</td>' +
       '</tr>';
     }).join("");
 
-    // Tinh tong so lan submit cua moi member tu submissions history
+    // Tinh tong so lan submit = submissions lich su + response hom nay
     var submitCounts = {};
     var rawSubs = (data && data._rawSubmissions) ? data._rawSubmissions : [];
     rawSubs.forEach(function(s) {
       if (s && s.userId && s.userId.startsWith("ou_")) {
         submitCounts[s.userId] = (submitCounts[s.userId] || 0) + 1;
       }
+    });
+    // Them response hom nay neu chua co trong submissions
+    var today = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
+    var todayStr = today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0")+"-"+String(today.getDate()).padStart(2,"0");
+    (data.responseList || []).forEach(function(r) {
+      if (!r || !r.userId) return;
+      var alreadyCounted = rawSubs.some(function(s) { return s.userId === r.userId && s.date === todayStr; });
+      if (!alreadyCounted) submitCounts[r.userId] = (submitCounts[r.userId] || 0) + 1;
     });
 
     var membersHTML =
