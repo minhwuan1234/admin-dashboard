@@ -106,7 +106,7 @@ window.TOOL_REGISTRY.push({
     }
 
     var dailyMembers = daily.members || [];
-    return { totalMembers: totalMembers, submittedCount: submittedCount, missingCount: missingCount, submissionRate: submissionRate, memberStatuses: memberStatuses, allTasks: allTasks, chartDays: chartDays, _rawSubmissions: cleanSubs, dailyMembers: dailyMembers, dailyDate: daily.date || "", _members: members };
+    return { totalMembers: totalMembers, submittedCount: submittedCount, missingCount: missingCount, submissionRate: submissionRate, memberStatuses: memberStatuses, allTasks: allTasks, chartDays: chartDays, _rawSubmissions: cleanSubs, dailyMembers: dailyMembers, dailyDate: daily.date || "", _members: members, responseList: responseList };
   },
 
   /* ══════════════════════════════
@@ -368,6 +368,27 @@ window.TOOL_REGISTRY.push({
       '<div id="chart-day-detail" style="display:none;margin-bottom:24px" data-active-date=""></div>';
 
     /* Members table */
+    // Tinh tong submit trong 30 ngay gan nhat
+    var now30 = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
+    var cutoff = new Date(now30); cutoff.setDate(cutoff.getDate() - 29);
+    var cutoffStr = cutoff.getFullYear()+"-"+String(cutoff.getMonth()+1).padStart(2,"0")+"-"+String(cutoff.getDate()).padStart(2,"0");
+
+    var submitCounts = {};
+    var rawSubs = (data && data._rawSubmissions) ? data._rawSubmissions : [];
+    rawSubs.forEach(function(s) {
+      if (s && s.userId && s.userId.startsWith("ou_") && s.date >= cutoffStr) {
+        submitCounts[s.userId] = (submitCounts[s.userId] || 0) + 1;
+      }
+    });
+    // Them response hom nay neu chua co trong submissions
+    var today30 = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
+    var todayStr = today30.getFullYear()+"-"+String(today30.getMonth()+1).padStart(2,"0")+"-"+String(today30.getDate()).padStart(2,"0");
+    (data.responseList || []).forEach(function(r) {
+      if (!r || !r.userId) return;
+      var alreadyCounted = rawSubs.some(function(s) { return s.userId === r.userId && s.date === todayStr; });
+      if (!alreadyCounted) submitCounts[r.userId] = (submitCounts[r.userId] || 0) + 1;
+    });
+
     var rows = data.memberStatuses.slice().sort(function(a, b) {
       if (a.status === b.status) return a.name.localeCompare(b.name);
       return a.status === "submitted" ? -1 : 1;
@@ -405,26 +426,7 @@ window.TOOL_REGISTRY.push({
       '</tr>';
     }).join("");
 
-    // Tinh tong submit trong 30 ngay gan nhat
-    var now30 = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
-    var cutoff = new Date(now30); cutoff.setDate(cutoff.getDate() - 29);
-    var cutoffStr = cutoff.getFullYear()+"-"+String(cutoff.getMonth()+1).padStart(2,"0")+"-"+String(cutoff.getDate()).padStart(2,"0");
 
-    var submitCounts = {};
-    var rawSubs = (data && data._rawSubmissions) ? data._rawSubmissions : [];
-    rawSubs.forEach(function(s) {
-      if (s && s.userId && s.userId.startsWith("ou_") && s.date >= cutoffStr) {
-        submitCounts[s.userId] = (submitCounts[s.userId] || 0) + 1;
-      }
-    });
-    // Them response hom nay neu chua co trong submissions
-    var today30 = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
-    var todayStr = today30.getFullYear()+"-"+String(today30.getMonth()+1).padStart(2,"0")+"-"+String(today30.getDate()).padStart(2,"0");
-    (data.responseList || []).forEach(function(r) {
-      if (!r || !r.userId) return;
-      var alreadyCounted = rawSubs.some(function(s) { return s.userId === r.userId && s.date === todayStr; });
-      if (!alreadyCounted) submitCounts[r.userId] = (submitCounts[r.userId] || 0) + 1;
-    });
 
     var membersHTML =
       '<div class="members-section">' +
@@ -485,7 +487,7 @@ window.TOOL_REGISTRY.push({
         /* Problem statement */
         '<div class="tool-info-section">' +
           '<div class="tool-info-section-title"><i class="ti ti-alert-triangle"></i> Van de can giai quyet</div>' +
-          '<p class="tool-info-text">Khi em vào check các task hiện tại thì đang thấy 1 vấn đề như sau --> PM đơn giản chỉ là giao task, brief --> team product xử lý task --> feedback --> loop, có lẽ vì chị Vi và chị Thư, anh DA đang là senior nên mọi người luôn đảm bảo được đầu ra và deadline, nhưng liệu cái process này còn đúng khi người làm là intern, vậy thì lúc này khi không có thói quen report khó khăn hoặc xin update lại deadline thì liệu PM có hoàn thành dược mục tiêu của khâu quản lý không ? (hoặc có thể mọi người nhắn tin riêng cho nhau nhưng đồng nghĩa với việc chị Ánh or chị Hà or chị Giang có thể bị miss thông tin)</p>' +
+          '<p class="tool-info-text">Them noi dung o day.</p>' +
         '</div>' +
 
         /* About */
