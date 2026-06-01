@@ -415,18 +415,29 @@ window.TOOL_REGISTRY.push({
 
       '</div>';
 
-    /* ── Wrap in tabs, init via window function ── */
-    window._initDUTabs = function() {
-      var btns  = document.querySelectorAll(".tab-btn");
-      var panes = document.querySelectorAll(".tab-pane");
-      if (!btns.length) return;
+    /* ── Store HTML for tabs ── */
+    window._duTrackingHTML  = statsHTML + chartHTML + membersHTML + tasksHTML;
+    window._duTaskInfoHTML  = taskInfoHTML;
 
-      // Fill pane content
+    window._initDUTabs = function() {
+      // Fill pane content first
       var tracking = document.getElementById("tab-tracking");
       var taskinfo = document.getElementById("tab-taskinfo");
-      if (tracking) tracking.innerHTML = statsHTML + chartHTML + membersHTML + tasksHTML;
-      if (taskinfo) taskinfo.innerHTML = taskInfoHTML;
+      if (tracking) tracking.innerHTML = window._duTrackingHTML;
+      if (taskinfo) taskinfo.innerHTML = window._duTaskInfoHTML;
 
+      // Init chart after content is in DOM
+      setTimeout(function() {
+        var chartRange = document.getElementById("chart-range");
+        if (chartRange && window._buildDUChart) {
+          window._buildDUChart(parseInt(chartRange.value));
+          chartRange.addEventListener("change", function() { window._buildDUChart(parseInt(this.value)); });
+        }
+      }, 50);
+
+      // Tab switching
+      var btns  = document.querySelectorAll(".tab-btn");
+      var panes = document.querySelectorAll(".tab-pane");
       btns.forEach(function(btn) {
         btn.addEventListener("click", function() {
           btns.forEach(function(b) { b.classList.remove("active"); });
@@ -434,25 +445,14 @@ window.TOOL_REGISTRY.push({
           btn.classList.add("active");
           var target = document.getElementById("tab-" + btn.dataset.tab);
           if (target) { target.style.display = "block"; target.classList.add("active"); }
-
-          // Re-init chart if switching to tracking tab
           if (btn.dataset.tab === "tracking") {
             setTimeout(function() {
               var chartRange = document.getElementById("chart-range");
               if (chartRange && window._buildDUChart) window._buildDUChart(parseInt(chartRange.value));
-            }, 0);
+            }, 50);
           }
         });
       });
-
-      // Init tracking tab content + chart
-      setTimeout(function() {
-        var chartRange = document.getElementById("chart-range");
-        if (chartRange && window._buildDUChart) {
-          window._buildDUChart(parseInt(chartRange.value));
-          chartRange.addEventListener("change", function() { window._buildDUChart(parseInt(this.value)); });
-        }
-      }, 0);
     };
 
     return tabBar;
