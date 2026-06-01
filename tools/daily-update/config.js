@@ -258,7 +258,7 @@ window.TOOL_REGISTRY.push({
           var pct = parseInt(t.progress||0);
           var pc  = pct===100?"done":pct>=60?"high":"medium";
           taskCols += '<td style="font-size:12px;color:var(--text-secondary);max-width:200px">' + (t.title||"—") + '</td>' +
-            '<td style="text-align:center"><span class="progress-badge ' + pc + '">' + (t.progress||"—") + '</span></td>';
+            '<td style="text-align:left"><span class="progress-badge ' + pc + '">' + (t.progress||"—") + '</span></td>';
         } else {
           taskCols += '<td style="color:var(--text-muted);font-size:12px">—</td><td></td>';
         }
@@ -269,7 +269,7 @@ window.TOOL_REGISTRY.push({
         '<td>' + statusCell + '</td>' +
         '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">' + timeStr + '</td>' +
         taskCols +
-        '<td style="text-align:center">' + submitCell + '</td>' +
+        '<td style="text-align:left">' + submitCell + '</td>' +
       '</tr>';
     }).join("");
 
@@ -296,7 +296,7 @@ window.TOOL_REGISTRY.push({
 
     var membersHTML =
       '<div class="members-section">' +
-        '<div class="section-header"><span class="section-title">Trang thai submit hom nay</span><span class="section-meta">' + data.submittedCount + '/' + data.totalMembers + ' members</span></div>' +
+        '<div class="section-header"><span class="section-title">Trang thai submit</span><span class="section-meta">' + data.submittedCount + '/' + data.totalMembers + ' members</span></div>' +
         (function() {
           var maxTasks = Math.max.apply(null, data.memberStatuses.map(function(m) { return m.tasks.length || 0; }).concat([1]));
           var taskHeaders = "";
