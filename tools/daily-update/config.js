@@ -245,28 +245,31 @@ window.TOOL_REGISTRY.push({
         ? '<span style="font-family:var(--font-mono);font-weight:600;color:var(--text-primary)">' + totalSubmits + '</span><span style="color:var(--text-muted);font-size:11px"> /30</span>'
         : '<span style="color:var(--text-muted)">—</span>';
 
-      // Tung task rieng le
-      var taskLines = m.tasks.length > 0
-        ? m.tasks.map(function(t) {
-            var pct = parseInt(t.progress||0);
-            var pc  = pct===100?"done":pct>=60?"high":"medium";
-            var rawTime = (t.timeSpent||"").trim();
-            var safeTime = /^[\d.]+h?$/.test(rawTime) ? rawTime : "";
-            return '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border)">' +
-              '<span style="flex:1;font-size:12px;color:var(--text-secondary);line-height:1.4">' + (t.title||"—") + '</span>' +
-              '<span class="progress-badge ' + pc + '" style="flex-shrink:0">' + (t.progress||"—") + '</span>' +
-              (safeTime ? '<span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);flex-shrink:0;min-width:28px;text-align:right">' + safeTime + '</span>' : '') +
-            '</div>';
-          }).join("") +
-          (m.message ? '<div style="font-size:11px;color:var(--text-muted);padding-top:4px">📎 ' + m.message.substring(0,80) + (m.message.length>80?"…":"") + '</div>' : "")
-        : '<span style="color:var(--text-muted);font-size:12px">—</span>';
+      var maxTasks = Math.max.apply(null, data.memberStatuses.map(function(x) { return x.tasks.length || 0; }).concat([1]));
+      var timeStr = utils ? utils.formatTime(m.submittedAt) : "—";
+      var statusCell = '<span class="status-pill ' + m.status + '">' + (m.status==="submitted"?"✓ Da submit":"✗ Chua submit") + '</span>';
+      var nameCell = '<span style="font-weight:500">' + m.name + '</span>' +
+        (m.message ? '<br><span style="font-size:11px;color:var(--text-muted)">📎 ' + m.message.substring(0,60) + (m.message.length>60?"…":"") + '</span>' : '');
+
+      var taskCols = "";
+      for (var ti = 0; ti < maxTasks; ti++) {
+        var t = m.tasks[ti];
+        if (t) {
+          var pct = parseInt(t.progress||0);
+          var pc  = pct===100?"done":pct>=60?"high":"medium";
+          taskCols += '<td style="font-size:12px;color:var(--text-secondary);max-width:200px">' + (t.title||"—") + '</td>' +
+            '<td style="text-align:center"><span class="progress-badge ' + pc + '">' + (t.progress||"—") + '</span></td>';
+        } else {
+          taskCols += '<td style="color:var(--text-muted);font-size:12px">—</td><td></td>';
+        }
+      }
 
       return '<tr>' +
-        '<td style="font-weight:500;vertical-align:top;padding-top:14px">' + m.name + '</td>' +
-        '<td style="vertical-align:top;padding-top:14px"><span class="status-pill ' + m.status + '">' + (m.status==="submitted"?"✓ Da submit":"✗ Chua submit") + '</span></td>' +
-        '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);vertical-align:top;padding-top:14px">' + (utils ? utils.formatTime(m.submittedAt) : "—") + '</td>' +
-        '<td style="vertical-align:top;padding-top:10px">' + taskLines + '</td>' +
-        '<td style="text-align:center;vertical-align:top;padding-top:14px">' + submitCell + '</td>' +
+        '<td>' + nameCell + '</td>' +
+        '<td>' + statusCell + '</td>' +
+        '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">' + timeStr + '</td>' +
+        taskCols +
+        '<td style="text-align:center">' + submitCell + '</td>' +
       '</tr>';
     }).join("");
 
@@ -294,9 +297,14 @@ window.TOOL_REGISTRY.push({
     var membersHTML =
       '<div class="members-section">' +
         '<div class="section-header"><span class="section-title">Trang thai submit hom nay</span><span class="section-meta">' + data.submittedCount + '/' + data.totalMembers + ' members</span></div>' +
-        '<table class="members-table"><thead><tr>' +
-          '<th>Thanh vien</th><th>Trang thai</th><th>Gio submit</th><th>Tasks</th><th style="text-align:center">Submit / 30 ngay</th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table>' +
+        (function() {
+          var maxTasks = Math.max.apply(null, data.memberStatuses.map(function(m) { return m.tasks.length || 0; }).concat([1]));
+          var taskHeaders = "";
+          for (var i = 0; i < maxTasks; i++) taskHeaders += '<th>Task ' + (i+1) + '</th><th style="text-align:center">Progress</th>';
+          return '<table class="members-table"><thead><tr>' +
+            '<th>Thanh vien</th><th>Trang thai</th><th>Gio submit</th>' + taskHeaders + '<th style="text-align:center">Submit/30d</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table>';
+        })() +
       '</div>';
 
     /* Tasks */
