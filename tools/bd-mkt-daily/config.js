@@ -210,7 +210,7 @@ window.TOOL_REGISTRY.push({
         col.addEventListener("mouseleave", function() { globalTip.style.display = "none"; });
 
         // Click -> fetch day detail
-        if (col.dataset.morning > 0 || col.dataset.evening > 0) {
+        if (parseInt(col.dataset.morning) > 0 || parseInt(col.dataset.evening) > 0) {
           col.style.cursor = "pointer";
           col.addEventListener("click", function() {
             var dateStr = col.dataset.date;
