@@ -98,6 +98,7 @@ window.TOOL_REGISTRY.push({
       chartDays.push({ dateStr: dateStr, label: label, count: names.length, total: totalMembers, names: names });
     }
 
+    var dailyMembers = daily.members || [];
     return { totalMembers: totalMembers, submittedCount: submittedCount, missingCount: missingCount, submissionRate: submissionRate, memberStatuses: memberStatuses, allTasks: allTasks, chartDays: chartDays, _rawSubmissions: cleanSubs, dailyMembers: dailyMembers, dailyDate: daily.date || "" };
   },
 
