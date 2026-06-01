@@ -541,29 +541,28 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
-  padding: 10px 20px;
+  padding: 10px 12px;
   text-align: left;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .members-table td {
-  padding: 12px 20px;
-  font-size: 13.5px;
+  padding: 12px 12px;
+  font-size: 13px;
   border-bottom: 1px solid var(--border);
   color: var(--text-primary);
   vertical-align: middle;
+  text-align: left;
 }
 
-.members-table th:nth-child(4),
-.members-table td:nth-child(4) {
-  text-align: center;
-  vertical-align: middle;
-}
-
-.members-table th:nth-child(6),
-.members-table td:nth-child(6) {
-  text-align: center;
+/* Thanh vien column: fixed narrow width */
+.members-table th:nth-child(1),
+.members-table td:nth-child(1) {
+  width: 120px;
+  min-width: 100px;
+  max-width: 140px;
 }
 
 .members-table tr:last-child td { border-bottom: none; }
