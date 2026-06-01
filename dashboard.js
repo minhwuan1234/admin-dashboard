@@ -150,16 +150,23 @@ async function openToolDetail(toolId) {
   }
   $("detail-body").innerHTML = html;
 
-  // After DOM inject: init chart + dropdown if present
-  setTimeout(function() {
-    var chartRange = document.getElementById("chart-range");
-    if (chartRange && window._buildDUChart) {
-      window._buildDUChart(parseInt(chartRange.value));
-      chartRange.addEventListener("change", function() {
-        window._buildDUChart(parseInt(this.value));
-      });
-    }
-  }, 0);
+  // After DOM inject: init tabs + chart
+  // requestAnimationFrame ensures DOM is fully painted before init
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      if (window._initDUTabs) {
+        window._initDUTabs();
+      } else {
+        var chartRange = document.getElementById("chart-range");
+        if (chartRange && window._buildDUChart) {
+          window._buildDUChart(parseInt(chartRange.value));
+          chartRange.addEventListener("change", function() {
+            window._buildDUChart(parseInt(this.value));
+          });
+        }
+      }
+    });
+  });
 }
 
 function backToOverview() {
