@@ -18,10 +18,11 @@ window.TOOL_REGISTRY.push({
 
   /* ── URLs ── */
   _urls: {
-    dailyTasks:  "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/daily-tasks.json",
-    responses:   "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/responses.json",
-    members:     "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/members.json",
-    submissions: "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/tracking/daily-update-submissions.json"
+    dailyTasks:   "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/daily-tasks.json",
+    responses:    "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/responses.json",
+    members:      "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/members.json",
+    submissions:  "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/tracking/daily-update-submissions.json",
+    snapshotBase: "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/tracking/snapshots/responses-"
   },
 
   /* ══════════════════════════════
@@ -105,7 +106,7 @@ window.TOOL_REGISTRY.push({
     }
 
     var dailyMembers = daily.members || [];
-    return { totalMembers: totalMembers, submittedCount: submittedCount, missingCount: missingCount, submissionRate: submissionRate, memberStatuses: memberStatuses, allTasks: allTasks, chartDays: chartDays, _rawSubmissions: cleanSubs, dailyMembers: dailyMembers, dailyDate: daily.date || "" };
+    return { totalMembers: totalMembers, submittedCount: submittedCount, missingCount: missingCount, submissionRate: submissionRate, memberStatuses: memberStatuses, allTasks: allTasks, chartDays: chartDays, _rawSubmissions: cleanSubs, dailyMembers: dailyMembers, dailyDate: daily.date || "", _members: members };
   },
 
   /* ══════════════════════════════
@@ -139,7 +140,7 @@ window.TOOL_REGISTRY.push({
     var tabBar =
       '<div class="tab-bar">' +
         '<button class="tab-btn active" data-tab="tracking"><i class="ti ti-chart-bar"></i> Tracking</button>' +
-        '<button class="tab-btn" data-tab="taskinfo"><i class="ti ti-list-check"></i> About</button>' +
+        '<button class="tab-btn" data-tab="taskinfo"><i class="ti ti-list-check"></i> Thong tin task</button>' +
       '</div>' +
       '<div id="tab-tracking" class="tab-pane active"></div>' +
       '<div id="tab-taskinfo" class="tab-pane" style="display:none"></div>';
@@ -230,19 +231,104 @@ window.TOOL_REGISTRY.push({
         var tooltipBody = groupByWeek
           ? b.count + " ngay co submission<br><span style=\"color:var(--text-secondary);font-size:11px\">" + nl + "</span>"
           : b.count + "/" + window._duTotal + " nguoi submit<br><span style=\"color:var(--text-secondary);font-size:11px\">" + nl + "</span>";
-        return '<div class="chart-col">' +
+        var clickable = b.count > 0 && !groupByWeek ? "chart-col--clickable" : "";
+        return '<div class="chart-col ' + clickable + '" data-date="' + b.dateStr + '" data-has-data="' + (b.count > 0 ? "1" : "0") + '">' +
           '<div class="chart-bar-wrap">' +
-            '<div class="chart-tooltip"><strong>' + b.tooltip + '</strong><br>' + tooltipBody + '</div>' +
+            '<div class="chart-tooltip"><strong>' + b.tooltip + '</strong><br>' + tooltipBody + (b.count > 0 && !groupByWeek ? '<br><span style="color:var(--accent);font-size:10px">↓ Click de xem chi tiet</span>' : '') + '</div>' +
             '<div class="chart-bar" style="height:' + Math.max(pct, 4) + '%;background:' + bc + '"></div>' +
           '</div>' +
           '<div class="chart-label" style="font-size:' + (groupByWeek ? "9px" : "11px") + '">' + b.lbl + '</div>' +
           '<div class="chart-count">' + b.count + '</div>' +
         '</div>';
       }).join("");
+
+      // Click handler: fetch snapshot va hien thi ben duoi chart
+      container.querySelectorAll(".chart-col--clickable").forEach(function(col) {
+        col.addEventListener("click", function() {
+          var dateStr = col.dataset.date;
+          var detail  = document.getElementById("chart-day-detail");
+          if (!detail) return;
+
+          // Toggle: click cung ngay thi dong lai
+          if (detail.dataset.activeDate === dateStr && detail.style.display !== "none") {
+            detail.style.display = "none";
+            detail.dataset.activeDate = "";
+            col.classList.remove("chart-col--active");
+            container.querySelectorAll(".chart-col--active").forEach(function(c) { c.classList.remove("chart-col--active"); });
+            return;
+          }
+
+          container.querySelectorAll(".chart-col--active").forEach(function(c) { c.classList.remove("chart-col--active"); });
+          col.classList.add("chart-col--active");
+          detail.dataset.activeDate = dateStr;
+          detail.style.display = "block";
+          detail.innerHTML = '<div class="state-loading" style="padding:20px"><div class="spinner"></div><p>Dang tai du lieu ngay ' + dateStr + '...</p></div>';
+
+          window._fetchDaySnapshot(dateStr);
+        });
+      });
+    };
+
+    // Store members map for snapshot rendering
+    var _membersMap = {};
+    Object.entries(data._members || {}).forEach(function(e) { _membersMap[e[1]] = e[0]; });
+    window._duMembersMap  = _membersMap;
+    window._duSnapshotBase = "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/tracking/snapshots/responses-";
+    window._duMaxTasks    = Math.max.apply(null, (data.memberStatuses || []).map(function(m) { return m.tasks.length || 0; }).concat([1]));
+
+    window._fetchDaySnapshot = function(dateStr) {
+      var detail = document.getElementById("chart-day-detail");
+      if (!detail) return;
+      var url = window._duSnapshotBase + dateStr + ".json?" + Date.now();
+      fetch(url).then(function(r) {
+        if (!r.ok) throw new Error("404");
+        return r.json();
+      }).then(function(snapshot) {
+        var responseList = Array.isArray(snapshot) ? snapshot : (snapshot.responses || []);
+        responseList = responseList.filter(function(r) { return r.userId && r.userId.startsWith("ou_"); });
+
+        var maxT = Math.max.apply(null, responseList.map(function(r) { return (r.tasks||[]).length; }).concat([1]));
+        var taskHeaders = "";
+        for (var i = 0; i < maxT; i++) taskHeaders += '<th class="col-task">Task ' + (i+1) + '</th><th class="col-progress">Progress</th>';
+
+        var rows = responseList.map(function(r) {
+          var name = window._duMembersMap[r.userId] || r.userId;
+          var taskCols = "";
+          for (var i = 0; i < maxT; i++) {
+            var t = (r.tasks||[])[i];
+            if (t) {
+              var pct = parseInt(t.progress||0);
+              var pc  = pct===100?"done":pct>=60?"high":"medium";
+              taskCols += '<td class="col-task" style="font-size:13px;color:var(--text-secondary)">' + (t.title||"—") + '</td>' +
+                          '<td class="col-progress"><span class="progress-badge ' + pc + '">' + (t.progress||"—") + '</span></td>';
+            } else {
+              taskCols += '<td class="col-task" style="color:var(--text-muted)">—</td><td class="col-progress"></td>';
+            }
+          }
+          var time = r.submittedAt ? new Intl.DateTimeFormat("vi-VN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Ho_Chi_Minh"}).format(new Date(r.submittedAt)) : "—";
+          return '<tr><td style="font-weight:500">' + name + '</td>' +
+            '<td><span class="status-pill submitted">✓ Da submit</span></td>' +
+            '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">' + time + '</td>' +
+            taskCols + '</tr>';
+        }).join("");
+
+        detail.innerHTML =
+          '<div class="members-section">' +
+            '<div class="section-header">' +
+              '<span class="section-title">Chi tiet ngay ' + dateStr + '</span>' +
+              '<span class="section-meta">' + responseList.length + ' submissions</span>' +
+            '</div>' +
+            '<table class="members-table"><thead><tr>' +
+              '<th>Thanh vien</th><th>Trang thai</th><th>Gio submit</th>' + taskHeaders +
+            '</tr></thead><tbody>' + rows + '</tbody></table>' +
+          '</div>';
+      }).catch(function() {
+        detail.innerHTML = '<div class="state-empty" style="padding:24px"><i class="ti ti-inbox" style="font-size:28px"></i><p>Chua co du lieu cho ngay ' + dateStr + '</p><p style="font-size:12px;color:var(--text-muted)">Snapshot se co sau khi workflow chay lan dau trong ngay do</p></div>';
+      });
     };
 
     var chartHTML =
-      '<div class="members-section" style="margin-bottom:24px">' +
+      '<div class="members-section" style="margin-bottom:0">' +
         '<div class="section-header">' +
           '<span class="section-title">Lich su submit</span>' +
           '<select id="chart-range" style="background:var(--bg-hover);border:1px solid var(--border-strong);color:var(--text-primary);font-size:12px;padding:4px 10px;border-radius:var(--radius-sm);cursor:pointer;outline:none">' +
@@ -253,7 +339,8 @@ window.TOOL_REGISTRY.push({
           '</select>' +
         '</div>' +
         '<div id="chart-container" class="chart-wrap"></div>' +
-      '</div>';
+      '</div>' +
+      '<div id="chart-day-detail" style="display:none;margin-bottom:24px" data-active-date=""></div>';
 
     /* Members table */
     var rows = data.memberStatuses.slice().sort(function(a, b) {
@@ -372,14 +459,14 @@ window.TOOL_REGISTRY.push({
 
         /* Problem statement */
         '<div class="tool-info-section">' +
-          '<div class="tool-info-section-title"><i class="ti ti-alert-triangle"></i> Problem Statement </div>' +
-          '<p class="tool-info-text">Khi em vào check các task hiện tại thì đang thấy 1 vấn đề như sau --> PM đơn giản chỉ là giao task, brief --> team product xử lý task --> feedback --> loop, có lẽ vì chị Vi và chị Thư, anh DA đang là senior nên mọi người luôn đảm bảo được đầu ra và deadline, nhưng liệu cái process này còn đúng khi người làm là intern, vậy thì lúc này khi không có thói quen report khó khăn hoặc xin update lại deadline thì liệu PM có hoàn thành dược mục tiêu của khâu quản lý không ? (hoặc có thể mọi người nhắn tin riêng cho nhau nhưng đồng nghĩa với việc chị Ánh or chị Hà or chị Giang có thể bị miss thông tin)</p>' +
+          '<div class="tool-info-section-title"><i class="ti ti-alert-triangle"></i> Van de can giai quyet</div>' +
+          '<p class="tool-info-text">Them noi dung o day.</p>' +
         '</div>' +
 
         /* About */
         '<div class="tool-info-section">' +
           '<div class="tool-info-section-title"><i class="ti ti-info-circle"></i> Mo ta</div>' +
-          '<p class="tool-info-text">Tool này giúp PM theo dõi việc submit standup hằng ngày của toàn bộ thành viên. Mỗi ngày, từng thành viên nhận link form qua Lark, điền progress từng task và gửi về cho PM. Dữ liệu đươc tổng hợp tự động và hiển thị trên dashboard này.</p>' +
+          '<p class="tool-info-text">Tool nay giup PM theo doi viec submit standup hang ngay cua toan bo thanh vien. Moi ngay, tung thanh vien nhan link ca nhan qua Lark, dien progress tung task va gui ve. Du lieu duoc tong hop tu dong va hien thi tren dashboard nay.</p>' +
         '</div>' +
 
 
