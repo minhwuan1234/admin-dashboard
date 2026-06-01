@@ -565,6 +565,13 @@ body {
   max-width: 140px;
 }
 
+/* Progress columns: center align */
+.members-table th.col-progress,
+.members-table td.col-progress {
+  text-align: center;
+  width: 90px;
+}
+
 .members-table tr:last-child td { border-bottom: none; }
 
 .members-table tr:hover td { background: var(--bg-hover); }
