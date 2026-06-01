@@ -379,7 +379,7 @@ window.TOOL_REGISTRY.push({
         /* About */
         '<div class="tool-info-section">' +
           '<div class="tool-info-section-title"><i class="ti ti-info-circle"></i> Mo ta</div>' +
-          '<p class="tool-info-text">Tool nay giup PM theo doi viec submit standup hang ngay cua toan bo thanh vien. Moi ngay, tung thanh vien nhan link ca nhan qua Lark, dien progress tung task va gui ve. Du lieu duoc tong hop tu dong va hien thi tren dashboard nay.</p>' +
+          '<p class="tool-info-text">Tool này giúp PM theo dõi việc submit standup hằng ngày của toàn bộ thành viên. Mỗi ngày, từng thành viên nhận link form qua Lark, điền progress từng task và gửi về cho PM. Dữ liệu đươc tổng hợp tự động và hiển thị trên dashboard này.</p>' +
         '</div>' +
 
 
