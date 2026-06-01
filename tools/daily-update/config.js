@@ -98,7 +98,7 @@ window.TOOL_REGISTRY.push({
       chartDays.push({ dateStr: dateStr, label: label, count: names.length, total: totalMembers, names: names });
     }
 
-    return { totalMembers: totalMembers, submittedCount: submittedCount, missingCount: missingCount, submissionRate: submissionRate, memberStatuses: memberStatuses, allTasks: allTasks, chartDays: chartDays, _rawSubmissions: cleanSubs };
+    return { totalMembers: totalMembers, submittedCount: submittedCount, missingCount: missingCount, submissionRate: submissionRate, memberStatuses: memberStatuses, allTasks: allTasks, chartDays: chartDays, _rawSubmissions: cleanSubs, dailyMembers: dailyMembers, dailyDate: daily.date || "" };
   },
 
   /* ══════════════════════════════
@@ -123,6 +123,14 @@ window.TOOL_REGISTRY.push({
   renderDetail: function(data, utils) {
     if (!data || data._error) return '<div class="state-error"><i class="ti ti-alert-circle"></i> Khong the tai data</div>';
     if (data._loading) return '<div class="state-loading"><div class="spinner"></div><p>Dang tai...</p></div>';
+
+    var tabBar =
+      '<div class="tab-bar">' +
+        '<button class="tab-btn active" data-tab="tracking"><i class="ti ti-chart-bar"></i> Tracking</button>' +
+        '<button class="tab-btn" data-tab="taskinfo"><i class="ti ti-list-check"></i> Thong tin task</button>' +
+      '</div>' +
+      '<div id="tab-tracking" class="tab-pane active"></div>' +
+      '<div id="tab-taskinfo" class="tab-pane" style="display:none"></div>';
 
     var rate = data.submissionRate;
     var rateColor = rate >= 80 ? "green" : rate >= 50 ? "amber" : "red";
@@ -336,6 +344,116 @@ window.TOOL_REGISTRY.push({
         taskRowsHTML +
       '</div>';
 
-    return statsHTML + chartHTML + membersHTML + tasksHTML;
+    /* ── Tab 2: Tool Info (static) ── */
+    var taskInfoHTML =
+      '<div class="tool-info-page">' +
+
+        /* Hero */
+        '<div class="tool-info-hero">' +
+          '<div class="tool-info-icon"><i class="ti ti-square-check"></i></div>' +
+          '<div>' +
+            '<h2 class="tool-info-name">Daily Task Update Process PM</h2>' +
+            '<p class="tool-info-tagline">He thong tracking standup hang ngay cho team F.Learning Studio</p>' +
+          '</div>' +
+        '</div>' +
+
+        /* About */
+        '<div class="tool-info-section">' +
+          '<div class="tool-info-section-title"><i class="ti ti-info-circle"></i> Mo ta</div>' +
+          '<p class="tool-info-text">Tool nay giup PM theo doi viec submit standup hang ngay cua toan bo thanh vien. Moi ngay, tung thanh vien nhan link ca nhan qua Lark, dien progress tung task va gui ve. Du lieu duoc tong hop tu dong va hien thi tren dashboard nay.</p>' +
+        '</div>' +
+
+        /* Flow */
+        '<div class="tool-info-section">' +
+          '<div class="tool-info-section-title"><i class="ti ti-arrows-right"></i> Luong hoat dong</div>' +
+          '<div class="tool-info-flow">' +
+            '<div class="flow-step"><span class="flow-num">1</span><div><strong>n8n</strong><span>Tao daily-tasks.json va push len GitHub</span></div></div>' +
+            '<div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>' +
+            '<div class="flow-step"><span class="flow-num">2</span><div><strong>Lark Bot</strong><span>Gui link ca nhan cho tung thanh vien</span></div></div>' +
+            '<div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>' +
+            '<div class="flow-step"><span class="flow-num">3</span><div><strong>Form Submit</strong><span>Thanh vien dien progress, Cloudflare Worker ghi vao responses.json</span></div></div>' +
+            '<div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>' +
+            '<div class="flow-step"><span class="flow-num">4</span><div><strong>GitHub Actions</strong><span>Tu dong chay update-tracking.js, cap nhat submissions.json</span></div></div>' +
+            '<div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>' +
+            '<div class="flow-step"><span class="flow-num">5</span><div><strong>Dashboard</strong><span>Doc du lieu tu GitHub raw JSON va hien thi</span></div></div>' +
+          '</div>' +
+        '</div>' +
+
+        /* Config */
+        '<div class="tool-info-grid">' +
+          '<div class="tool-info-section">' +
+            '<div class="tool-info-section-title"><i class="ti ti-settings"></i> Cau hinh</div>' +
+            '<div class="tool-info-kv">' +
+              '<div class="kv-row"><span class="kv-key">Timezone</span><span class="kv-val">Asia/Ho_Chi_Minh</span></div>' +
+              '<div class="kv-row"><span class="kv-key">Cutoff time</span><span class="kv-val">18:00 ICT</span></div>' +
+              '<div class="kv-row"><span class="kv-key">Tan suat</span><span class="kv-val">Hang ngay (Thu 2 – Thu 6)</span></div>' +
+              '<div class="kv-row"><span class="kv-key">Trigger</span><span class="kv-val">responses.json thay doi → GitHub Actions</span></div>' +
+              '<div class="kv-row"><span class="kv-key">Platform</span><span class="kv-val">Lark / Feishu</span></div>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="tool-info-section">' +
+            '<div class="tool-info-section-title"><i class="ti ti-database"></i> Data sources</div>' +
+            '<div class="tool-info-kv">' +
+              '<div class="kv-row"><span class="kv-key">daily-tasks.json</span><span class="kv-val kv-mono">daily-update-task-process-pm</span></div>' +
+              '<div class="kv-row"><span class="kv-key">responses.json</span><span class="kv-val kv-mono">daily-update-task-process-pm</span></div>' +
+              '<div class="kv-row"><span class="kv-key">members.json</span><span class="kv-val kv-mono">daily-update-task-process-pm</span></div>' +
+              '<div class="kv-row"><span class="kv-key">submissions.json</span><span class="kv-val kv-mono">tracking/daily-update-submissions.json</span></div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        /* Links */
+        '<div class="tool-info-section">' +
+          '<div class="tool-info-section-title"><i class="ti ti-link"></i> Lien ket</div>' +
+          '<div class="tool-info-links">' +
+            '<a class="tool-info-link" href="https://github.com/minhwuan1234/daily-update-task-process-pm" target="_blank"><i class="ti ti-brand-github"></i> daily-update-task-process-pm</a>' +
+            '<a class="tool-info-link" href="https://github.com/minhwuan1234/admin-dashboard" target="_blank"><i class="ti ti-brand-github"></i> admin-dashboard</a>' +
+          '</div>' +
+        '</div>' +
+
+      '</div>';
+
+    /* ── Wrap in tabs, init via window function ── */
+    window._initDUTabs = function() {
+      var btns  = document.querySelectorAll(".tab-btn");
+      var panes = document.querySelectorAll(".tab-pane");
+      if (!btns.length) return;
+
+      // Fill pane content
+      var tracking = document.getElementById("tab-tracking");
+      var taskinfo = document.getElementById("tab-taskinfo");
+      if (tracking) tracking.innerHTML = statsHTML + chartHTML + membersHTML + tasksHTML;
+      if (taskinfo) taskinfo.innerHTML = taskInfoHTML;
+
+      btns.forEach(function(btn) {
+        btn.addEventListener("click", function() {
+          btns.forEach(function(b) { b.classList.remove("active"); });
+          panes.forEach(function(p) { p.style.display = "none"; p.classList.remove("active"); });
+          btn.classList.add("active");
+          var target = document.getElementById("tab-" + btn.dataset.tab);
+          if (target) { target.style.display = "block"; target.classList.add("active"); }
+
+          // Re-init chart if switching to tracking tab
+          if (btn.dataset.tab === "tracking") {
+            setTimeout(function() {
+              var chartRange = document.getElementById("chart-range");
+              if (chartRange && window._buildDUChart) window._buildDUChart(parseInt(chartRange.value));
+            }, 0);
+          }
+        });
+      });
+
+      // Init tracking tab content + chart
+      setTimeout(function() {
+        var chartRange = document.getElementById("chart-range");
+        if (chartRange && window._buildDUChart) {
+          window._buildDUChart(parseInt(chartRange.value));
+          chartRange.addEventListener("change", function() { window._buildDUChart(parseInt(this.value)); });
+        }
+      }, 0);
+    };
+
+    return tabBar;
   }
 });
