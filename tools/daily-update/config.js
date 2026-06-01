@@ -370,27 +370,18 @@ window.TOOL_REGISTRY.push({
           '</div>' +
         '</div>' +
 
+        /* Problem statement */
+        '<div class="tool-info-section">' +
+          '<div class="tool-info-section-title"><i class="ti ti-alert-triangle"></i> Van de can giai quyet</div>' +
+          '<p class="tool-info-text">Them noi dung o day.</p>' +
+        '</div>' +
+
         /* About */
         '<div class="tool-info-section">' +
           '<div class="tool-info-section-title"><i class="ti ti-info-circle"></i> Mo ta</div>' +
           '<p class="tool-info-text">Tool nay giup PM theo doi viec submit standup hang ngay cua toan bo thanh vien. Moi ngay, tung thanh vien nhan link ca nhan qua Lark, dien progress tung task va gui ve. Du lieu duoc tong hop tu dong va hien thi tren dashboard nay.</p>' +
         '</div>' +
 
-        /* Flow */
-        '<div class="tool-info-section">' +
-          '<div class="tool-info-section-title"><i class="ti ti-arrows-right"></i> Luong hoat dong</div>' +
-          '<div class="tool-info-flow">' +
-            '<div class="flow-step"><span class="flow-num">1</span><div><strong>n8n</strong><span>Tao daily-tasks.json va push len GitHub</span></div></div>' +
-            '<div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>' +
-            '<div class="flow-step"><span class="flow-num">2</span><div><strong>Lark Bot</strong><span>Gui link ca nhan cho tung thanh vien</span></div></div>' +
-            '<div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>' +
-            '<div class="flow-step"><span class="flow-num">3</span><div><strong>Form Submit</strong><span>Thanh vien dien progress, Cloudflare Worker ghi vao responses.json</span></div></div>' +
-            '<div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>' +
-            '<div class="flow-step"><span class="flow-num">4</span><div><strong>GitHub Actions</strong><span>Tu dong chay update-tracking.js, cap nhat submissions.json</span></div></div>' +
-            '<div class="flow-arrow"><i class="ti ti-arrow-right"></i></div>' +
-            '<div class="flow-step"><span class="flow-num">5</span><div><strong>Dashboard</strong><span>Doc du lieu tu GitHub raw JSON va hien thi</span></div></div>' +
-          '</div>' +
-        '</div>' +
 
         /* Config */
         '<div class="tool-info-grid">' +
