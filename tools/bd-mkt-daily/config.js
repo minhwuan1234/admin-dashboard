@@ -7,85 +7,79 @@ window.TOOL_REGISTRY.push({
   icon:        "ti-sun-moon",
   status:      "active",
 
-  _urls: {
-    members:     "https://raw.githubusercontent.com/minhwuan1234/BD-MKT-Daily-Update-Task/main/members.json",
-    reportsBase: "https://raw.githubusercontent.com/minhwuan1234/BD-MKT-Daily-Update-Task/main/reports/"
+  _APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxCjcIHzxvgxm_kjDKAeutMOFogvC7rAMWVW9VT_prcusv-FUYcAdvekh5IUxygxW0olw/exec",
+
+  _MEMBERS: {
+    "ou_72582d819ebd02dbe9cc0e2e08908099": "Minh Quân",
+    "ou_3ff4b0c1ae98c259c7006993a41e8d84": "Huyền Linh",
+    "ou_1f71198623d1dc71688fe1312390f7ee": "Nga Linh",
+    "ou_d7d124081bfa6eabfb12e85166eca85f": "Giang",
+    "ou_db7bca8d6a07437aaab422849ddc2c69": "Chi",
   },
 
   /* ══════════════════════════════
-     FETCH DATA
+     FETCH DATA — 1 request tu Sheets
      ══════════════════════════════ */
   fetchData: async function(utils) {
-    var urls = this._urls;
+    var res = await utils.fetchJson(this._APPS_SCRIPT_URL + "?t=" + Date.now());
+    if (!res.ok) throw new Error("Sheets API error");
 
-    // Lay 30 ngay gan nhat, thu tu tang dan (cu nhat -> moi nhat)
+    var rows        = res.data || [];
+    var MEMBERS     = this._MEMBERS;
+    var memberNames = Object.values(MEMBERS);
+    var totalMembers = memberNames.length;
+
+    // Ngay hom nay theo VN timezone
     var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
-    var days = [];
-    for (var i = 29; i >= 0; i--) {
-      var d = new Date(now); d.setDate(d.getDate() - i);
-      var ds = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-      var lbl = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
-      days.push({ dateStr: ds, label: lbl });
-    }
-    // days[0] = 29 ngay truoc, days[29] = hom nay — thu tu DUNG
+    var todayStr = now.getFullYear() + "-" +
+      String(now.getMonth()+1).padStart(2,"0") + "-" +
+      String(now.getDate()).padStart(2,"0");
 
-    var todayStr = days[days.length - 1].dateStr;
-
-    // Fetch members + today morning/evening
-    var members = await utils.fetchJson(urls.members, true).catch(function() { return {}; });
-
-    // Fetch today's reports
-    // Bo qua PM (Trang Liu, Hanh) — chi track member thuc su
-    var PM_NAMES = ["Trang Liu", "Hanh", "Hạnh"];
-    var memberIds = [];
-    var memberNames = {};
-    Object.entries(members).forEach(function(e) {
-      if (PM_NAMES.indexOf(e[0]) !== -1) return;
-      var id = e[1].id || e[1];
-      memberIds.push(id);
-      memberNames[id] = e[0];
-    });
-
-    // Fetch morning + evening cho hom nay
+    // Filter rows hom nay
+    var todayRows = rows.filter(function(r) { return r["Date"] === todayStr; });
     var todayMorning = {};
     var todayEvening = {};
 
-    await Promise.all(memberIds.map(async function(uid) {
-      var mUrl = urls.reportsBase + todayStr + "/morning/" + uid + ".json?" + Date.now();
-      var eUrl = urls.reportsBase + todayStr + "/evening/" + uid + ".json?" + Date.now();
-      var [m, e] = await Promise.all([
-        fetch(mUrl).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
-        fetch(eUrl).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
-      ]);
-      if (m) todayMorning[uid] = m;
-      if (e) todayEvening[uid] = e;
-    }));
-
-    // Fetch 7 ngay submissions count (chi fetch folder listing khong duoc, nen fetch tung member)
-    // Fetch parallel nhung ghi vao dung vi tri idx de giu thu tu
-    var chartDays = days.map(function(d) {
-      return { dateStr: d.dateStr, label: d.label, morning: 0, evening: 0 };
+    todayRows.forEach(function(r) {
+      var member = r["Member"];
+      var type   = r["Type"];
+      var tasks  = [];
+      for (var i = 1; i <= 3; i++) {
+        var title = r["Task " + i];
+        if (!title) continue;
+        tasks.push({
+          title:        title,
+          expectedTime: r["Plan "   + i] || "—",
+          progress:     r["Actual " + i] || "—",
+          timeSpent:    r["Time "   + i] || "—",
+        });
+      }
+      var entry = {
+        memberName:  member,
+        tasks:       tasks,
+        submittedAt: r["Submitted At"] || "",
+        blockers:    r["Blockers"]     || "",
+      };
+      if (type === "morning") todayMorning[member] = entry;
+      if (type === "evening") todayEvening[member] = entry;
     });
-    await Promise.all(days.map(async function(day, idx) {
-      var morningCount = 0, eveningCount = 0;
-      await Promise.all(memberIds.map(async function(uid) {
-        var t = Date.now();
-        var mUrl = urls.reportsBase + day.dateStr + "/morning/" + uid + ".json?" + t;
-        var eUrl = urls.reportsBase + day.dateStr + "/evening/" + uid + ".json?" + t;
-        var results = await Promise.all([
-          fetch(mUrl).then(function(r) { return r.ok; }).catch(function() { return false; }),
-          fetch(eUrl).then(function(r) { return r.ok; }).catch(function() { return false; })
-        ]);
-        if (results[0]) morningCount++;
-        if (results[1]) eveningCount++;
-      }));
-      chartDays[idx].morning = morningCount;
-      chartDays[idx].evening = eveningCount;
-    }));
-    // Sort lai theo dateStr de chac chan thu tu dung
-    chartDays.sort(function(a, b) { return a.dateStr.localeCompare(b.dateStr); });
 
-    var totalMembers = memberIds.length;
+    // Chart 30 ngay
+    var days = [];
+    for (var i = 29; i >= 0; i--) {
+      var d = new Date(now); d.setDate(d.getDate() - i);
+      var ds  = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+      var lbl = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
+      days.push({ dateStr: ds, label: lbl, morning: 0, evening: 0 });
+    }
+
+    rows.forEach(function(r) {
+      var day = days.find(function(d) { return d.dateStr === r["Date"]; });
+      if (!day) return;
+      if (r["Type"] === "morning") day.morning++;
+      if (r["Type"] === "evening") day.evening++;
+    });
+
     var morningCount = Object.keys(todayMorning).length;
     var eveningCount = Object.keys(todayEvening).length;
 
@@ -96,12 +90,13 @@ window.TOOL_REGISTRY.push({
       morningRate:  totalMembers > 0 ? Math.round(morningCount / totalMembers * 100) : 0,
       eveningRate:  totalMembers > 0 ? Math.round(eveningCount / totalMembers * 100) : 0,
       memberNames:  memberNames,
-      memberIds:    memberIds,
-      members:      members,
+      memberIds:    Object.keys(MEMBERS),
+      members:      MEMBERS,
       todayMorning: todayMorning,
       todayEvening: todayEvening,
-      chartDays:    chartDays,
-      todayStr:     todayStr
+      chartDays:    days,
+      todayStr:     todayStr,
+      allRows:      rows,
     };
   },
 
@@ -145,27 +140,29 @@ window.TOOL_REGISTRY.push({
     /* ── Stats ── */
     var mc = data.morningRate >= 80 ? "green" : data.morningRate >= 50 ? "amber" : "red";
     var ec = data.eveningRate >= 80 ? "green" : data.eveningRate >= 50 ? "amber" : "red";
+    var bothCount = data.memberNames.filter(function(name) {
+      return data.todayMorning[name] && data.todayEvening[name];
+    }).length;
+
     var statsHTML =
       '<div class="detail-stats">' +
         '<div class="stat-card"><span class="stat-label">☀️ Morning submit</span><span class="stat-value ' + mc + '">' + data.morningRate + '%</span><span class="stat-delta">' + data.morningCount + '/' + data.totalMembers + ' members</span></div>' +
         '<div class="stat-card"><span class="stat-label">🌙 Evening submit</span><span class="stat-value ' + ec + '">' + data.eveningRate + '%</span><span class="stat-delta">' + data.eveningCount + '/' + data.totalMembers + ' members</span></div>' +
-        '<div class="stat-card"><span class="stat-label">Ca 2 submit</span><span class="stat-value green">' +
-          Object.keys(data.todayMorning).filter(function(id) { return data.todayEvening[id]; }).length +
-        '</span><span class="stat-delta">/ ' + data.totalMembers + ' members</span></div>' +
+        '<div class="stat-card"><span class="stat-label">Ca 2 submit</span><span class="stat-value green">' + bothCount + '</span><span class="stat-delta">/ ' + data.totalMembers + ' members</span></div>' +
       '</div>';
 
-    /* ── Chart 7 ngay: grouped morning/evening ── */
+    /* ── Chart ── */
     window._bdChartDays = data.chartDays;
     window._bdTotal     = data.totalMembers;
+    window._bdAllRows   = data.allRows;
 
     window._buildBDChart = function(n) {
       var container = document.getElementById("bd-chart-container");
       if (!container) return;
       n = n || 7;
       var allDays = window._bdChartDays || [];
-      // Lay n ngay cuoi (moi nhat o cuoi mang = ben phai chart)
-      var days = allDays.slice(-n);
-      var max  = Math.max(window._bdTotal, 1);
+      var days    = allDays.slice(-n);
+      var max     = Math.max(window._bdTotal, 1);
       var hasData = days.some(function(d) { return d.morning > 0 || d.evening > 0; });
 
       if (!hasData) {
@@ -174,42 +171,40 @@ window.TOOL_REGISTRY.push({
       }
 
       container.innerHTML = days.map(function(d) {
-        var mp = Math.round(d.morning / max * 100);
-        var ep = Math.round(d.evening / max * 100);
-        var tipHtml = '<strong>' + d.dateStr + '</strong><br>☀️ Morning: ' + d.morning + '/' + max + '<br>🌙 Evening: ' + d.evening + '/' + max;
-        var mBg = mp >= 80 ? "var(--green)" : mp > 0 ? "var(--accent)" : "var(--bg-hover)";
-        var eBg = ep >= 80 ? "var(--blue)"  : ep > 0 ? "var(--yellow)" : "var(--bg-hover)";
-        return '<div class="chart-col" data-tip="' + tipHtml.replace(/"/g, "&quot;") + '" data-date="' + d.dateStr + '" data-morning="' + d.morning + '" data-evening="' + d.evening + '">' +
+        var mp   = Math.round(d.morning / max * 100);
+        var ep   = Math.round(d.evening / max * 100);
+        var tip  = '<strong>' + d.dateStr + '</strong><br>☀️ Morning: ' + d.morning + '/' + max + '<br>🌙 Evening: ' + d.evening + '/' + max;
+        var mBg  = mp >= 80 ? "var(--green)"  : mp > 0 ? "var(--accent)" : "var(--bg-hover)";
+        var eBg  = ep >= 80 ? "var(--blue)"   : ep > 0 ? "var(--yellow)" : "var(--bg-hover)";
+        return '<div class="chart-col" data-tip="' + tip.replace(/"/g, "&quot;") + '" data-date="' + d.dateStr + '" data-morning="' + d.morning + '" data-evening="' + d.evening + '">' +
           '<div class="chart-bar-wrap" style="gap:3px;align-items:flex-end">' +
-            '<div class="chart-bar" style="flex:1;height:' + Math.max(mp, 3) + '%;background:' + mBg + ';border-radius:3px 3px 0 0"></div>' +
-            '<div class="chart-bar" style="flex:1;height:' + Math.max(ep, 3) + '%;background:' + eBg + ';border-radius:3px 3px 0 0"></div>' +
+            '<div class="chart-bar" style="flex:1;height:' + Math.max(mp,3) + '%;background:' + mBg + ';border-radius:3px 3px 0 0"></div>' +
+            '<div class="chart-bar" style="flex:1;height:' + Math.max(ep,3) + '%;background:' + eBg + ';border-radius:3px 3px 0 0"></div>' +
           '</div>' +
           '<div class="chart-label">' + d.label + '</div>' +
           '<div class="chart-count">' + d.morning + '/' + d.evening + '</div>' +
         '</div>';
       }).join("");
 
-      // Global tooltip
-      var globalTip = document.getElementById("_bd_global_tip");
-      if (!globalTip) {
-        globalTip = document.createElement("div");
-        globalTip.id = "_bd_global_tip";
-        globalTip.style.cssText = "position:fixed;z-index:99999;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:6px;padding:8px 12px;font-size:12px;color:var(--text-primary);white-space:nowrap;line-height:1.6;pointer-events:none;display:none;font-family:var(--font-body)";
-        document.body.appendChild(globalTip);
+      // Tooltip
+      var tip = document.getElementById("_bd_global_tip");
+      if (!tip) {
+        tip = document.createElement("div");
+        tip.id = "_bd_global_tip";
+        tip.style.cssText = "position:fixed;z-index:99999;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:6px;padding:8px 12px;font-size:12px;color:var(--text-primary);white-space:nowrap;line-height:1.6;pointer-events:none;display:none;font-family:var(--font-body)";
+        document.body.appendChild(tip);
       }
       container.querySelectorAll(".chart-col").forEach(function(col) {
         col.addEventListener("mouseenter", function() {
-          var tip = col.dataset.tip; if (!tip) return;
-          globalTip.innerHTML = tip.replace(/&quot;/g, '"');
-          globalTip.style.display = "block";
+          tip.innerHTML = (col.dataset.tip || "").replace(/&quot;/g, '"');
+          tip.style.display = "block";
         });
         col.addEventListener("mousemove", function(e) {
-          globalTip.style.left = (e.clientX - globalTip.offsetWidth / 2) + "px";
-          globalTip.style.top  = (e.clientY - globalTip.offsetHeight - 14) + "px";
+          tip.style.left = (e.clientX - tip.offsetWidth / 2) + "px";
+          tip.style.top  = (e.clientY - tip.offsetHeight - 14) + "px";
         });
-        col.addEventListener("mouseleave", function() { globalTip.style.display = "none"; });
+        col.addEventListener("mouseleave", function() { tip.style.display = "none"; });
 
-        // Click -> fetch day detail
         if (parseInt(col.dataset.morning) > 0 || parseInt(col.dataset.evening) > 0) {
           col.style.cursor = "pointer";
           col.addEventListener("click", function() {
@@ -226,73 +221,85 @@ window.TOOL_REGISTRY.push({
             col.classList.add("chart-col--active");
             detail.dataset.activeDate = dateStr;
             detail.style.display = "block";
-            detail.innerHTML = '<div class="state-loading" style="padding:20px"><div class="spinner"></div><p>Dang tai du lieu ngay ' + dateStr + '...</p></div>';
             window._fetchBDDay(dateStr);
           });
         }
       });
     };
 
-    // Store refs for click fetch
-    window._bdMemberIds   = data.memberIds;
-    window._bdMemberNames = data.memberNames;
-    window._bdReportsBase = "https://raw.githubusercontent.com/minhwuan1234/BD-MKT-Daily-Update-Task/main/reports/";
-
+    /* ── Fetch day detail tu allRows (khong can request moi) ── */
     window._fetchBDDay = function(dateStr) {
-      var detail     = document.getElementById("bd-day-detail");
-      var memberIds  = window._bdMemberIds  || [];
-      var memberNames= window._bdMemberNames|| {};
-      var base       = window._bdReportsBase;
+      var detail = document.getElementById("bd-day-detail");
       if (!detail) return;
 
-      Promise.all(memberIds.map(function(uid) {
-        var t = Date.now();
-        return Promise.all([
-          fetch(base + dateStr + "/morning/" + uid + ".json?" + t).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
-          fetch(base + dateStr + "/evening/" + uid + ".json?" + t).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
-        ]).then(function(res) { return { uid: uid, morning: res[0], evening: res[1] }; });
-      })).then(function(results) {
-        var hasAny = results.some(function(r) { return r.morning || r.evening; });
-        if (!hasAny) {
-          detail.innerHTML = '<div class="state-empty" style="padding:24px"><i class="ti ti-inbox" style="font-size:28px"></i><p>Chua co du lieu cho ngay ' + dateStr + '</p></div>';
-          return;
+      var rows = (window._bdAllRows || []).filter(function(r) {
+        return r["Date"] === dateStr;
+      });
+
+      if (!rows.length) {
+        detail.innerHTML = '<div class="state-empty" style="padding:24px"><i class="ti ti-inbox" style="font-size:28px"></i><p>Chua co du lieu cho ngay ' + dateStr + '</p></div>';
+        return;
+      }
+
+      // Group by member
+      var byMember = {};
+      rows.forEach(function(r) {
+        var m = r["Member"];
+        if (!byMember[m]) byMember[m] = { morning: null, evening: null };
+        if (r["Type"] === "morning") byMember[m].morning = r;
+        if (r["Type"] === "evening") byMember[m].evening = r;
+      });
+
+      var memberRows = Object.entries(byMember).map(function(entry) {
+        var name = entry[0];
+        var d    = entry[1];
+
+        var mCell = d.morning
+          ? '<span class="status-pill submitted" style="font-size:10px">☀️ Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + (d.morning["Submitted At"] || "") + '</span>'
+          : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
+        var eCell = d.evening
+          ? '<span class="status-pill submitted" style="font-size:10px">🌙 Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + (d.evening["Submitted At"] || "") + '</span>'
+          : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
+
+        var taskCols = "";
+        for (var i = 1; i <= 3; i++) {
+          var title = d.morning ? (d.morning["Task " + i] || "") : "";
+          var plan  = d.morning ? (d.morning["Plan "  + i] || "—") : "—";
+          var prog  = d.evening ? (d.evening["Actual " + i] || "") : "";
+          var time  = d.evening ? (d.evening["Time "  + i] || "—") : "—";
+          if (!title && i > 1) continue;
+          var pc = prog === "100%" ? "done" : prog && parseInt(prog) >= 60 ? "high" : "medium";
+          taskCols +=
+            '<td style="font-size:12px;color:var(--text-primary)">' + (title || "—") + '</td>' +
+            '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">' + plan + '</td>' +
+            '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+            '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">' + time + '</td>';
         }
 
-        var maxT = 0;
-        results.forEach(function(r) { if (r.morning && r.morning.tasks) maxT = Math.max(maxT, r.morning.tasks.length); });
-        maxT = Math.max(maxT, 1);
+        return '<tr>' +
+          '<td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name + '</td>' +
+          '<td style="vertical-align:middle">' + mCell + '</td>' +
+          '<td style="vertical-align:middle">' + eCell + '</td>' +
+          taskCols +
+        '</tr>';
+      }).join("");
 
-        var ths = '<th>Thanh vien</th><th>Morning</th><th>Evening</th>';
-        for (var i = 0; i < maxT; i++) ths += '<th>Task ' + (i+1) + '</th><th>Plan</th><th>Actual</th><th>Time</th>';
+      var mCount = Object.values(byMember).filter(function(d) { return d.morning; }).length;
+      var eCount = Object.values(byMember).filter(function(d) { return d.evening; }).length;
 
-        var rows = results.map(function(r) {
-          var name = memberNames[r.uid] || r.uid;
-          var mTime = r.morning ? new Intl.DateTimeFormat("vi-VN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Ho_Chi_Minh"}).format(new Date(r.morning.submittedAt)) : "—";
-          var eTime = r.evening ? new Intl.DateTimeFormat("vi-VN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Ho_Chi_Minh"}).format(new Date(r.evening.submittedAt)) : "—";
-          var mCell = r.morning ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">☀️ Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + mTime + '</span>' : '<span class="status-pill missing" style="font-size:10px;white-space:nowrap">✗ Chua</span>';
-          var eCell = r.evening ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">🌙 Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + eTime + '</span>' : '<span class="status-pill missing" style="font-size:10px;white-space:nowrap">✗ Chua</span>';
-
-          var taskCols = "";
-          for (var i = 0; i < maxT; i++) {
-            var t      = r.morning && r.morning.tasks ? r.morning.tasks[i] : null;
-            var actual = r.evening && r.evening.tasks ? r.evening.tasks[i] : null;
-            var prog   = actual ? actual.progress : null;
-            var pc     = prog === "100%" ? "done" : prog && parseInt(prog) >= 60 ? "high" : "medium";
-            taskCols +=
-              '<td style="font-size:12px;color:var(--text-primary)">' + (t ? (t.title||"—") : "—") + '</td>' +
-              '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">' + (t ? (t.expectedTime||"—") : "—") + '</td>' +
-              '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
-              '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">' + (actual && actual.timeSpent ? actual.timeSpent : "—") + '</td>';
-          }
-          return '<tr><td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name + '</td><td style="vertical-align:middle">' + mCell + '</td><td style="vertical-align:middle">' + eCell + '</td>' + taskCols + '</tr>';
-        }).join("");
-
-        detail.innerHTML =
-          '<div class="members-section" style="overflow-x:auto">' +
-            '<div class="section-header"><span class="section-title">Chi tiet ngay ' + dateStr + '</span><span class="section-meta">' + results.filter(function(r){return r.morning;}).length + ' morning · ' + results.filter(function(r){return r.evening;}).length + ' evening</span></div>' +
-            '<table class="members-table" style="min-width:100%;table-layout:auto"><thead><tr>' + ths + '</tr></thead><tbody>' + rows + '</tbody></table>' +
-          '</div>';
-      });
+      detail.innerHTML =
+        '<div class="members-section" style="overflow-x:auto">' +
+          '<div class="section-header">' +
+            '<span class="section-title">Chi tiet ngay ' + dateStr + '</span>' +
+            '<span class="section-meta">' + mCount + ' morning · ' + eCount + ' evening</span>' +
+          '</div>' +
+          '<table class="members-table" style="min-width:100%;table-layout:auto"><thead><tr>' +
+            '<th>Thanh vien</th><th>Morning</th><th>Evening</th>' +
+            '<th>Task 1</th><th>Plan</th><th>Actual</th><th>Time</th>' +
+            '<th>Task 2</th><th>Plan</th><th>Actual</th><th>Time</th>' +
+            '<th>Task 3</th><th>Plan</th><th>Actual</th><th>Time</th>' +
+          '</tr></thead><tbody>' + memberRows + '</tbody></table>' +
+        '</div>';
     };
 
     var chartHTML =
@@ -313,29 +320,27 @@ window.TOOL_REGISTRY.push({
           '</div>' +
         '</div>' +
         '<div id="bd-chart-container" class="chart-wrap"></div>' +
+        '<div id="bd-day-detail" style="display:none;margin-top:16px"></div>' +
       '</div>';
 
-    /* ── Members table ── */
-    // Tinh max tasks de biet so cot can tao
+    /* ── Members table hom nay ── */
     var maxTasks = 0;
-    data.memberIds.forEach(function(uid) {
-      var m = data.todayMorning[uid];
+    data.memberNames.forEach(function(name) {
+      var m = data.todayMorning[name];
       if (m && m.tasks) maxTasks = Math.max(maxTasks, m.tasks.length);
     });
     maxTasks = Math.max(maxTasks, 1);
 
-    // Build header: Thanh vien | Morning | Evening | Task 1 | Plan | Actual | Task 2 | Plan | Actual ...
     var thHeaders = '<th>Thanh vien</th><th>Morning</th><th>Evening</th>';
     for (var ti = 0; ti < maxTasks; ti++) {
       thHeaders += '<th>Task ' + (ti+1) + '</th><th>Plan</th><th>Actual</th><th>Time</th>';
     }
 
-    var memberRows = data.memberIds.map(function(uid) {
-      var name    = data.memberNames[uid] || uid;
-      var morning = data.todayMorning[uid];
-      var evening = data.todayEvening[uid];
-      var mTime   = morning ? (utils ? utils.formatTime(morning.submittedAt) : "—") : "—";
-      var eTime   = evening ? (utils ? utils.formatTime(evening.submittedAt) : "—") : "—";
+    var memberRows = data.memberNames.map(function(name) {
+      var morning = data.todayMorning[name];
+      var evening = data.todayEvening[name];
+      var mTime   = morning ? (morning.submittedAt || "") : "";
+      var eTime   = evening ? (evening.submittedAt || "") : "";
 
       var mCell = morning
         ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">☀️ Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + mTime + '</span>'
@@ -350,7 +355,6 @@ window.TOOL_REGISTRY.push({
         var actual = evening && evening.tasks ? evening.tasks[ti] : null;
         var prog   = actual ? actual.progress : null;
         var pc     = prog === "100%" ? "done" : prog && parseInt(prog) >= 60 ? "high" : "medium";
-
         taskCols +=
           '<td style="font-size:12px;color:var(--text-primary)">' + (t ? (t.title||"—") : "—") + '</td>' +
           '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">' + (t ? (t.expectedTime||"—") : "—") + '</td>' +
@@ -385,10 +389,6 @@ window.TOOL_REGISTRY.push({
           '</div>' +
         '</div>' +
         '<div class="tool-info-section">' +
-          '<div class="tool-info-section-title"><i class="ti ti-alert-triangle"></i> Van de can giai quyet</div>' +
-          '<p class="tool-info-text">Them noi dung o day.</p>' +
-        '</div>' +
-        '<div class="tool-info-section">' +
           '<div class="tool-info-section-title"><i class="ti ti-info-circle"></i> Mo ta</div>' +
           '<p class="tool-info-text">Moi ngay team BD-MKT dien 2 form: Morning (plan task + output du kien) va Evening (actual progress). Dashboard tong hop ti le submit va so sanh plan vs actual.</p>' +
         '</div>' +
@@ -402,23 +402,16 @@ window.TOOL_REGISTRY.push({
             '</div>' +
           '</div>' +
           '<div class="tool-info-section">' +
-            '<div class="tool-info-section-title"><i class="ti ti-database"></i> Data sources</div>' +
+            '<div class="tool-info-section-title"><i class="ti ti-database"></i> Data source</div>' +
             '<div class="tool-info-kv">' +
-              '<div class="kv-row"><span class="kv-key">members.json</span><span class="kv-val kv-mono">BD-MKT-Daily-Update-Task</span></div>' +
-              '<div class="kv-row"><span class="kv-key">reports/DATE/morning</span><span class="kv-val kv-mono">ou_xxx.json</span></div>' +
-              '<div class="kv-row"><span class="kv-key">reports/DATE/evening</span><span class="kv-val kv-mono">ou_xxx.json</span></div>' +
+              '<div class="kv-row"><span class="kv-key">Source</span><span class="kv-val">Google Sheets</span></div>' +
+              '<div class="kv-row"><span class="kv-key">Sheet</span><span class="kv-val kv-mono">BD-MKT-L&D-Daily Report</span></div>' +
+              '<div class="kv-row"><span class="kv-key">API</span><span class="kv-val kv-mono">Apps Script doGet</span></div>' +
             '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="tool-info-section">' +
-          '<div class="tool-info-section-title"><i class="ti ti-link"></i> Lien ket</div>' +
-          '<div class="tool-info-links">' +
-            '<a class="tool-info-link" href="https://github.com/minhwuan1234/BD-MKT-Daily-Update-Task" target="_blank"><i class="ti ti-brand-github"></i> BD-MKT-Daily-Update-Task</a>' +
           '</div>' +
         '</div>' +
       '</div>';
 
-    /* ── Store + init tabs ── */
     window._bdTrackingHTML = statsHTML + chartHTML + membersHTML;
     window._bdInfoHTML     = infoHTML;
 
@@ -436,15 +429,13 @@ window.TOOL_REGISTRY.push({
         }
       }, 50);
 
-      var btns  = document.querySelectorAll(".tab-btn");
-      var panes = document.querySelectorAll(".tab-pane");
-      btns.forEach(function(btn) {
+      document.querySelectorAll(".tab-btn").forEach(function(btn) {
         btn.addEventListener("click", function() {
-          btns.forEach(function(b) { b.classList.remove("active"); });
-          panes.forEach(function(p) { p.style.display = "none"; p.classList.remove("active"); });
+          document.querySelectorAll(".tab-btn").forEach(function(b) { b.classList.remove("active"); });
+          document.querySelectorAll(".tab-pane").forEach(function(p) { p.style.display = "none"; });
           btn.classList.add("active");
           var target = document.getElementById("tab-" + btn.dataset.tab);
-          if (target) { target.style.display = "block"; target.classList.add("active"); }
+          if (target) target.style.display = "block";
           if (btn.dataset.tab === "tracking") {
             setTimeout(function() {
               if (window._buildBDChart) {
