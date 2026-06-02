@@ -7,8 +7,6 @@ window.TOOL_REGISTRY.push({
   icon:        "ti-sun-moon",
   status:      "active",
 
-  _APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbyFQ5nPA7qvqjpokqtOCURdntTkRfu3u2md1VcNFBwuTRlvMR1DANUpMXm_2wqP58bP/exec",
-
   _MEMBERS: {
     "ou_72582d819ebd02dbe9cc0e2e08908099": "Minh Quân",
     "ou_3ff4b0c1ae98c259c7006993a41e8d84": "Huyền Linh",
@@ -18,33 +16,57 @@ window.TOOL_REGISTRY.push({
   },
 
   /* ══════════════════════════════
-     FETCH DATA — 1 request tu Sheets
+     FETCH DATA — CSV truc tiep tu Sheets
      ══════════════════════════════ */
   fetchData: async function(utils) {
-    var res = await utils.fetchJson(this._APPS_SCRIPT_URL + "?t=" + Date.now());
-    if (!res.ok) throw new Error("Sheets API error");
+    var SHEET_ID   = "1j-18C2hBM8Lvxz-sgDtLQ8KSeFTjxAyJ1CUGXiOcvvQ";
+    var SHEET_NAME = "BD-MKT-L&D-Daily Report";
+    var MEMBERS    = this._MEMBERS;
 
-    var rows         = res.data || [];
-    var MEMBERS      = this._MEMBERS;
+    var url = "https://docs.google.com/spreadsheets/d/" + SHEET_ID +
+              "/gviz/tq?tqx=out:csv&sheet=" + encodeURIComponent(SHEET_NAME) + "&t=" + Date.now();
+
+    var res = await fetch(url);
+    if (!res.ok) throw new Error("Sheets CSV error: " + res.status);
+    var csv = await res.text();
+
+    function splitCSVLine(line) {
+      var res=[], cur="", inQ=false;
+      for (var i=0; i<line.length; i++) {
+        var c = line[i];
+        if (c==='"') { if (inQ && line[i+1]==='"') { cur+='"'; i++; } else inQ=!inQ; }
+        else if (c===',' && !inQ) { res.push(cur); cur=""; }
+        else cur+=c;
+      }
+      res.push(cur);
+      return res;
+    }
+
+    var lines   = csv.split("\n").filter(function(l) { return l.trim(); });
+    var headers = splitCSVLine(lines[0]);
+    var rows    = lines.slice(1).map(function(line) {
+      var vals = splitCSVLine(line);
+      var obj  = {};
+      headers.forEach(function(h, i) { obj[h.trim()] = (vals[i] || "").trim(); });
+      return obj;
+    }).filter(function(r) { return r["Date"] && r["Member"]; });
+
     var memberNames  = Object.values(MEMBERS);
     var totalMembers = memberNames.length;
 
-    // Ngay hom nay theo VN timezone
     var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
     var todayStr = now.getFullYear() + "-" +
       String(now.getMonth()+1).padStart(2,"0") + "-" +
       String(now.getDate()).padStart(2,"0");
 
-    // Filter rows hom nay
-    var todayRows = rows.filter(function(r) { return r["Date"] === todayStr; });
+    var todayRows    = rows.filter(function(r) { return r["Date"] === todayStr; });
     var todayMorning = {};
     var todayEvening = {};
 
     todayRows.forEach(function(r) {
       var member = r["Member"];
       var type   = r["Type"];
-
-      var tasks = [];
+      var tasks  = [];
       for (var i = 1; i <= 2; i++) {
         var title = r["Task " + i];
         if (!title) continue;
@@ -56,7 +78,6 @@ window.TOOL_REGISTRY.push({
           timeSpent:    r["TimeSpent "+ i] || "—",
         });
       }
-
       var entry = {
         memberName:   member,
         tasks:        tasks,
@@ -65,15 +86,13 @@ window.TOOL_REGISTRY.push({
         tomorrowPlan: r["Tomorrow Plan"] || "",
         weeklyGoal:   r["Weekly Goal"]   || "",
       };
-
       if (type === "morning") todayMorning[member] = entry;
       if (type === "evening") todayEvening[member] = entry;
     });
 
-    // Chart 30 ngay
     var days = [];
     for (var i = 29; i >= 0; i--) {
-      var d = new Date(now); d.setDate(d.getDate() - i);
+      var d   = new Date(now); d.setDate(d.getDate() - i);
       var ds  = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
       var lbl = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
       days.push({ dateStr: ds, label: lbl, morning: 0, evening: 0 });
@@ -143,7 +162,6 @@ window.TOOL_REGISTRY.push({
       '<div id="tab-tracking" class="tab-pane"></div>' +
       '<div id="tab-info" class="tab-pane" style="display:none"></div>';
 
-    /* ── Stats ── */
     var mc = data.morningRate >= 80 ? "green" : data.morningRate >= 50 ? "amber" : "red";
     var ec = data.eveningRate >= 80 ? "green" : data.eveningRate >= 50 ? "amber" : "red";
     var bothCount = data.memberNames.filter(function(name) {
@@ -157,7 +175,6 @@ window.TOOL_REGISTRY.push({
         '<div class="stat-card"><span class="stat-label">Ca 2 submit</span><span class="stat-value green">' + bothCount + '</span><span class="stat-delta">/ ' + data.totalMembers + ' members</span></div>' +
       '</div>';
 
-    /* ── Chart ── */
     window._bdChartDays = data.chartDays;
     window._bdTotal     = data.totalMembers;
     window._bdAllRows   = data.allRows;
@@ -192,7 +209,6 @@ window.TOOL_REGISTRY.push({
         '</div>';
       }).join("");
 
-      // Tooltip
       var tip = document.getElementById("_bd_global_tip");
       if (!tip) {
         tip = document.createElement("div");
@@ -233,7 +249,6 @@ window.TOOL_REGISTRY.push({
       });
     };
 
-    /* ── Fetch day detail tu allRows ── */
     window._fetchBDDay = function(dateStr) {
       var detail = document.getElementById("bd-day-detail");
       if (!detail) return;
@@ -327,7 +342,6 @@ window.TOOL_REGISTRY.push({
         '<div id="bd-day-detail" style="display:none;margin-top:16px"></div>' +
       '</div>';
 
-    /* ── Members table hom nay ── */
     var maxTasks = 0;
     data.memberNames.forEach(function(name) {
       var m = data.todayMorning[name];
@@ -359,16 +373,16 @@ window.TOOL_REGISTRY.push({
         var time   = actual ? actual.timeSpent : null;
         var pc     = prog === "100%" ? "done" : prog && parseInt(prog) >= 60 ? "high" : "medium";
         taskCols +=
-          '<td style="font-size:12px;color:var(--text-primary)">'                                                                          + (t ? (t.title||"—") : "—")        + '</td>' +
-          '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">'                                                     + (t ? (t.expectedTime||"—") : "—") + '</td>' +
+          '<td style="font-size:12px;color:var(--text-primary)">'                                                                           + (t ? (t.title||"—") : "—")        + '</td>' +
+          '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">'                                                      + (t ? (t.expectedTime||"—") : "—") + '</td>' +
           '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
-          '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">'                            + (time || "—")                     + '</td>';
+          '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">'                             + (time || "—")                     + '</td>';
       }
 
       return '<tr>' +
-        '<td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name    + '</td>' +
-        '<td style="vertical-align:middle">'                                    + mCell   + '</td>' +
-        '<td style="vertical-align:middle">'                                    + eCell   + '</td>' +
+        '<td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name  + '</td>' +
+        '<td style="vertical-align:middle">'                                    + mCell + '</td>' +
+        '<td style="vertical-align:middle">'                                    + eCell + '</td>' +
         taskCols +
       '</tr>';
     }).join("");
@@ -381,7 +395,6 @@ window.TOOL_REGISTRY.push({
         '</tr></thead><tbody>' + memberRows + '</tbody></table>' +
       '</div>';
 
-    /* ── Tab info ── */
     var infoHTML =
       '<div class="tool-info-page">' +
         '<div class="tool-info-hero">' +
@@ -409,7 +422,7 @@ window.TOOL_REGISTRY.push({
             '<div class="tool-info-kv">' +
               '<div class="kv-row"><span class="kv-key">Source</span><span class="kv-val">Google Sheets</span></div>' +
               '<div class="kv-row"><span class="kv-key">Sheet</span><span class="kv-val kv-mono">BD-MKT-L&D-Daily Report</span></div>' +
-              '<div class="kv-row"><span class="kv-key">API</span><span class="kv-val kv-mono">Apps Script doGet</span></div>' +
+              '<div class="kv-row"><span class="kv-key">Method</span><span class="kv-val kv-mono">CSV export</span></div>' +
             '</div>' +
           '</div>' +
         '</div>' +
