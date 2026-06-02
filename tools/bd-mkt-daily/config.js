@@ -7,7 +7,7 @@ window.TOOL_REGISTRY.push({
   icon:        "ti-sun-moon",
   status:      "active",
 
-  _APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwEtThlKbWkESXSA1LDB67_bdeBFLZxK39H3OiI976bYIKEDqVj2_WJqvd_ptm3NzFMTQ/exec",
+  _APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbyFQ5nPA7qvqjpokqtOCURdntTkRfu3u2md1VcNFBwuTRlvMR1DANUpMXm_2wqP58bP/exec",
 
   _MEMBERS: {
     "ou_72582d819ebd02dbe9cc0e2e08908099": "Minh Quân",
@@ -24,9 +24,9 @@ window.TOOL_REGISTRY.push({
     var res = await utils.fetchJson(this._APPS_SCRIPT_URL + "?t=" + Date.now());
     if (!res.ok) throw new Error("Sheets API error");
 
-    var rows        = res.data || [];
-    var MEMBERS     = this._MEMBERS;
-    var memberNames = Object.values(MEMBERS);
+    var rows         = res.data || [];
+    var MEMBERS      = this._MEMBERS;
+    var memberNames  = Object.values(MEMBERS);
     var totalMembers = memberNames.length;
 
     // Ngay hom nay theo VN timezone
@@ -43,23 +43,29 @@ window.TOOL_REGISTRY.push({
     todayRows.forEach(function(r) {
       var member = r["Member"];
       var type   = r["Type"];
-      var tasks  = [];
-      for (var i = 1; i <= 3; i++) {
+
+      var tasks = [];
+      for (var i = 1; i <= 2; i++) {
         var title = r["Task " + i];
         if (!title) continue;
         tasks.push({
           title:        title,
-          expectedTime: r["Plan "   + i] || "—",
-          progress:     r["Actual " + i] || "—",
-          timeSpent:    r["Time "   + i] || "—",
+          output:       r["Output "   + i] || "—",
+          expectedTime: r["Expected " + i] || "—",
+          progress:     r["Progress " + i] || "—",
+          timeSpent:    r["TimeSpent "+ i] || "—",
         });
       }
+
       var entry = {
-        memberName:  member,
-        tasks:       tasks,
-        submittedAt: r["Submitted At"] || "",
-        blockers:    r["Blockers"]     || "",
+        memberName:   member,
+        tasks:        tasks,
+        submittedAt:  r["Submitted At"]  || "",
+        blockers:     r["Blockers"]      || "",
+        tomorrowPlan: r["Tomorrow Plan"] || "",
+        weeklyGoal:   r["Weekly Goal"]   || "",
       };
+
       if (type === "morning") todayMorning[member] = entry;
       if (type === "evening") todayEvening[member] = entry;
     });
@@ -171,11 +177,11 @@ window.TOOL_REGISTRY.push({
       }
 
       container.innerHTML = days.map(function(d) {
-        var mp   = Math.round(d.morning / max * 100);
-        var ep   = Math.round(d.evening / max * 100);
-        var tip  = '<strong>' + d.dateStr + '</strong><br>☀️ Morning: ' + d.morning + '/' + max + '<br>🌙 Evening: ' + d.evening + '/' + max;
-        var mBg  = mp >= 80 ? "var(--green)"  : mp > 0 ? "var(--accent)" : "var(--bg-hover)";
-        var eBg  = ep >= 80 ? "var(--blue)"   : ep > 0 ? "var(--yellow)" : "var(--bg-hover)";
+        var mp  = Math.round(d.morning / max * 100);
+        var ep  = Math.round(d.evening / max * 100);
+        var tip = '<strong>' + d.dateStr + '</strong><br>☀️ Morning: ' + d.morning + '/' + max + '<br>🌙 Evening: ' + d.evening + '/' + max;
+        var mBg = mp >= 80 ? "var(--green)"  : mp > 0 ? "var(--accent)" : "var(--bg-hover)";
+        var eBg = ep >= 80 ? "var(--blue)"   : ep > 0 ? "var(--yellow)" : "var(--bg-hover)";
         return '<div class="chart-col" data-tip="' + tip.replace(/"/g, "&quot;") + '" data-date="' + d.dateStr + '" data-morning="' + d.morning + '" data-evening="' + d.evening + '">' +
           '<div class="chart-bar-wrap" style="gap:3px;align-items:flex-end">' +
             '<div class="chart-bar" style="flex:1;height:' + Math.max(mp,3) + '%;background:' + mBg + ';border-radius:3px 3px 0 0"></div>' +
@@ -227,7 +233,7 @@ window.TOOL_REGISTRY.push({
       });
     };
 
-    /* ── Fetch day detail tu allRows (khong can request moi) ── */
+    /* ── Fetch day detail tu allRows ── */
     window._fetchBDDay = function(dateStr) {
       var detail = document.getElementById("bd-day-detail");
       if (!detail) return;
@@ -241,7 +247,6 @@ window.TOOL_REGISTRY.push({
         return;
       }
 
-      // Group by member
       var byMember = {};
       rows.forEach(function(r) {
         var m = r["Member"];
@@ -262,11 +267,11 @@ window.TOOL_REGISTRY.push({
           : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
 
         var taskCols = "";
-        for (var i = 1; i <= 3; i++) {
-          var title = d.morning ? (d.morning["Task " + i] || "") : "";
-          var plan  = d.morning ? (d.morning["Plan "  + i] || "—") : "—";
-          var prog  = d.evening ? (d.evening["Actual " + i] || "") : "";
-          var time  = d.evening ? (d.evening["Time "  + i] || "—") : "—";
+        for (var i = 1; i <= 2; i++) {
+          var title = d.morning ? (d.morning["Task "     + i] || "") : "";
+          var plan  = d.morning ? (d.morning["Expected " + i] || "—") : "—";
+          var prog  = d.evening ? (d.evening["Progress " + i] || "") : "";
+          var time  = d.evening ? (d.evening["TimeSpent "+ i] || "—") : "—";
           if (!title && i > 1) continue;
           var pc = prog === "100%" ? "done" : prog && parseInt(prog) >= 60 ? "high" : "medium";
           taskCols +=
@@ -297,7 +302,6 @@ window.TOOL_REGISTRY.push({
             '<th>Thanh vien</th><th>Morning</th><th>Evening</th>' +
             '<th>Task 1</th><th>Plan</th><th>Actual</th><th>Time</th>' +
             '<th>Task 2</th><th>Plan</th><th>Actual</th><th>Time</th>' +
-            '<th>Task 3</th><th>Plan</th><th>Actual</th><th>Time</th>' +
           '</tr></thead><tbody>' + memberRows + '</tbody></table>' +
         '</div>';
     };
@@ -339,33 +343,32 @@ window.TOOL_REGISTRY.push({
     var memberRows = data.memberNames.map(function(name) {
       var morning = data.todayMorning[name];
       var evening = data.todayEvening[name];
-      var mTime   = morning ? (morning.submittedAt || "") : "";
-      var eTime   = evening ? (evening.submittedAt || "") : "";
 
       var mCell = morning
-        ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">☀️ Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + mTime + '</span>'
+        ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">☀️ Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + (morning.submittedAt || "") + '</span>'
         : '<span class="status-pill missing" style="font-size:10px;white-space:nowrap">✗ Chua</span>';
       var eCell = evening
-        ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">🌙 Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + eTime + '</span>'
+        ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">🌙 Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + (evening.submittedAt || "") + '</span>'
         : '<span class="status-pill missing" style="font-size:10px;white-space:nowrap">✗ Chua</span>';
 
       var taskCols = "";
       for (var ti = 0; ti < maxTasks; ti++) {
         var t      = morning && morning.tasks ? morning.tasks[ti] : null;
         var actual = evening && evening.tasks ? evening.tasks[ti] : null;
-        var prog   = actual ? actual.progress : null;
+        var prog   = actual ? actual.progress  : null;
+        var time   = actual ? actual.timeSpent : null;
         var pc     = prog === "100%" ? "done" : prog && parseInt(prog) >= 60 ? "high" : "medium";
         taskCols +=
-          '<td style="font-size:12px;color:var(--text-primary)">' + (t ? (t.title||"—") : "—") + '</td>' +
-          '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">' + (t ? (t.expectedTime||"—") : "—") + '</td>' +
+          '<td style="font-size:12px;color:var(--text-primary)">'                                                                          + (t ? (t.title||"—") : "—")        + '</td>' +
+          '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">'                                                     + (t ? (t.expectedTime||"—") : "—") + '</td>' +
           '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
-          '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">' + (actual && actual.timeSpent ? actual.timeSpent : "—") + '</td>';
+          '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">'                            + (time || "—")                     + '</td>';
       }
 
       return '<tr>' +
-        '<td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name + '</td>' +
-        '<td style="vertical-align:middle">' + mCell + '</td>' +
-        '<td style="vertical-align:middle">' + eCell + '</td>' +
+        '<td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name    + '</td>' +
+        '<td style="vertical-align:middle">'                                    + mCell   + '</td>' +
+        '<td style="vertical-align:middle">'                                    + eCell   + '</td>' +
         taskCols +
       '</tr>';
     }).join("");
