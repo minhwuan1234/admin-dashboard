@@ -15,14 +15,12 @@ window.TOOL_REGISTRY.push({
   _sheetId:    "19YTdoUKx_MtflEcz7pyNxAfmvf-MEROsleODroj7fiw",
   _sheetNames: { rejected: "Rejected", consider: "Considerable", strong: "Strong Match" },
 
-  /* Platform brand colors */
   _platformColors: {
-    "Linkedin":  "#0A66C2",
-    "LinkedIn":  "#0A66C2",
-    "TopCV":     "#E84141",
-    "Glints":    "#0BD0A1",
-    "Email":     "#6B7280",
-    "Unknown":   "#94A3B8"
+    "Linkedin": "#0A66C2", "LinkedIn": "#0A66C2",
+    "TopCV":    "#E84141",
+    "Glints":   "#0BD0A1",
+    "Email":    "#6B7280",
+    "Unknown":  "#94A3B8"
   },
 
   /* ══════════════ FETCH ══════════════ */
@@ -32,48 +30,37 @@ window.TOOL_REGISTRY.push({
     var names   = this._sheetNames;
 
     function splitCSVLine(line) {
-      var res = [], cur = "", inQ = false;
-      for (var i = 0; i < line.length; i++) {
-        var c = line[i];
-        if (c === '"') { if (inQ && line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ; }
-        else if (c===',' && !inQ){ res.push(cur); cur=""; }
+      var res=[],cur="",inQ=false;
+      for (var i=0;i<line.length;i++){
+        var c=line[i];
+        if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+        else if(c===','&&!inQ){res.push(cur);cur="";}
         else cur+=c;
       }
-      res.push(cur); return res;
+      res.push(cur);return res;
     }
-    function parseCSV(text) {
-      var lines = text.split("\n").filter(function(l){return l.trim();});
-      if (lines.length < 2) return [];
-      var hdrs = splitCSVLine(lines[0]);
+    function parseCSV(text){
+      var lines=text.split("\n").filter(function(l){return l.trim();});
+      if(lines.length<2)return[];
+      var hdrs=splitCSVLine(lines[0]);
       return lines.slice(1).map(function(line){
-        var vals=splitCSVLine(line), obj={};
+        var vals=splitCSVLine(line),obj={};
         hdrs.forEach(function(h,i){obj[h.trim()]=(vals[i]||"").trim();});
         return obj;
       }).filter(function(r){return r["Timestamp"]&&r["Name"];});
     }
-    async function fetchSheet(tab) {
-      var url = "https://docs.google.com/spreadsheets/d/"+sheetId+
-                "/gviz/tq?tqx=out:csv&sheet="+encodeURIComponent(tab)+"&t="+Date.now();
-      var res = await fetch(url);
-      if (!res.ok) throw new Error("HTTP "+res.status);
+    async function fetchSheet(tab){
+      var url="https://docs.google.com/spreadsheets/d/"+sheetId+
+              "/gviz/tq?tqx=out:csv&sheet="+encodeURIComponent(tab)+"&t="+Date.now();
+      var res=await fetch(url);
+      if(!res.ok)throw new Error("HTTP "+res.status);
       return parseCSV(await res.text());
     }
-    function toDateStr(ts) {
-      var m=(ts||"").match(/^(\d{4}-\d{2}-\d{2})/); return m?m[1]:null;
-    }
-    function toWeekKey(dateStr) {
-      if (!dateStr) return null;
-      var d=new Date(dateStr+"T00:00:00"), day=d.getDay();
-      var diff=day===0?-6:1-day; d.setDate(d.getDate()+diff);
-      return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-    }
-    function weekLabel(wk) {
-      var d=new Date(wk+"T00:00:00"), end=new Date(d); end.setDate(end.getDate()+6);
-      return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+
-             "–"+String(end.getDate()).padStart(2,"0")+"/"+String(end.getMonth()+1).padStart(2,"0");
+    function toDateStr(ts){
+      var m=(ts||"").match(/^(\d{4}-\d{2}-\d{2})/);return m?m[1]:null;
     }
 
-    var results = await Promise.all([
+    var results=await Promise.all([
       fetchSheet(names.rejected).catch(function(){return[];}),
       fetchSheet(names.consider).catch(function(){return[];}),
       fetchSheet(names.strong).catch(function(){return[];})
@@ -82,45 +69,41 @@ window.TOOL_REGISTRY.push({
     results[1].forEach(function(r){r._verdict="consider";});
     results[2].forEach(function(r){r._verdict="strong";});
 
-    var all = results[0].concat(results[1]).concat(results[2]).map(function(r){
-      r._dateStr  = toDateStr(r["Timestamp"]);
-      r._weekKey  = toWeekKey(r._dateStr);
-      r._platform = (r["Apply Through"]||"Unknown").trim();
-      r._role     = (r["Role"]||r["Position"]||"Unknown").trim();
+    var all=results[0].concat(results[1]).concat(results[2]).map(function(r){
+      r._dateStr =toDateStr(r["Timestamp"]);
+      r._platform=(r["Apply Through"]||"Unknown").trim();
+      r._role    =(r["Role"]||r["Position"]||"Unknown").trim();
       return r;
     }).filter(function(r){return r._dateStr;});
 
     all.sort(function(a,b){return a._dateStr.localeCompare(b._dateStr);});
 
-    var platformSet={}, roleSet={};
-    all.forEach(function(r){ platformSet[r._platform]=true; roleSet[r._role]=true; });
-    var platforms = Object.keys(platformSet).sort();
-    var roles     = Object.keys(roleSet).sort();
+    var platformSet={},roleSet={};
+    all.forEach(function(r){platformSet[r._platform]=true;roleSet[r._role]=true;});
+    var platforms=Object.keys(platformSet).sort();
+    var roles    =Object.keys(roleSet).sort();
 
-    /* assign colors — brand first, fallback palette */
-    var fallback = ["#818cf8","#fb923c","#2dd4bf","#f472b6","#a3e635"];
-    var pColors  = {}; var fi = 0;
+    var fallback=["#818cf8","#fb923c","#2dd4bf","#f472b6","#a3e635"];
+    var pColors={};var fi=0;
     platforms.forEach(function(p){
-      pColors[p] = self._platformColors[p] || fallback[fi++ % fallback.length];
+      pColors[p]=self._platformColors[p]||fallback[fi++%fallback.length];
     });
 
     return {
-      all: all,
+      all:all,
       totalAll:      all.length,
       totalRejected: results[0].length,
       totalConsider: results[1].length,
       totalStrong:   results[2].length,
-      platforms:  platforms,
-      roles:      roles,
-      pColors:    pColors,
-      toWeekKey:  toWeekKey,
-      weekLabel:  weekLabel
+      platforms:platforms,
+      roles:roles,
+      pColors:pColors
     };
   },
 
   /* ══════════════ CARD ══════════════ */
-  renderCard: function(data) {
-    var total=data.totalAll, sc=data.totalStrong, co=data.totalConsider, re=data.totalRejected;
+  renderCard: function(data){
+    var total=data.totalAll,sc=data.totalStrong,co=data.totalConsider,re=data.totalRejected;
     var sRate=total>0?Math.round(sc/total*100):0;
     var sColor=sRate>=30?"green":sRate>=15?"amber":"red";
     return '<div class="tool-metrics">'+
@@ -137,11 +120,11 @@ window.TOOL_REGISTRY.push({
   },
 
   /* ══════════════ DETAIL ══════════════ */
-  renderDetail: function(data, utils) {
-    if (!data||data._error) return '<div class="state-error"><i class="ti ti-alert-circle"></i> Khong the tai data</div>';
-    if (data._loading) return '<div class="state-loading"><div class="spinner"></div><p>Dang tai...</p></div>';
+  renderDetail: function(data,utils){
+    if(!data||data._error)return'<div class="state-error"><i class="ti ti-alert-circle"></i> Khong the tai data</div>';
+    if(data._loading)return'<div class="state-loading"><div class="spinner"></div><p>Dang tai...</p></div>';
 
-    var tabBar =
+    var tabBar=
       '<div class="tab-bar">'+
         '<button class="tab-btn active" data-tab="tracking"><i class="ti ti-chart-bar"></i> Tracking</button>'+
         '<button class="tab-btn" data-tab="info"><i class="ti ti-info-circle"></i> Thong tin tool</button>'+
@@ -150,10 +133,10 @@ window.TOOL_REGISTRY.push({
       '<div id="tab-info"     class="tab-pane" style="display:none"></div>';
 
     /* Stats */
-    var total=data.totalAll, sc=data.totalStrong, co=data.totalConsider, re=data.totalRejected;
+    var total=data.totalAll,sc=data.totalStrong,co=data.totalConsider,re=data.totalRejected;
     var sRate=total>0?Math.round(sc/total*100):0;
     var cRate=total>0?Math.round(co/total*100):0;
-    var statsHTML =
+    var statsHTML=
       '<div class="detail-stats">'+
         '<div class="stat-card"><span class="stat-label">Tong ung vien</span><span class="stat-value">'+total+'</span><span class="stat-delta"><i class="ti ti-users"></i> Da cham diem</span></div>'+
         '<div class="stat-card"><span class="stat-label">💚 Strong hire</span><span class="stat-value green">'+sc+'</span><span class="stat-delta">'+sRate+'% tong so</span></div>'+
@@ -161,193 +144,128 @@ window.TOOL_REGISTRY.push({
         '<div class="stat-card"><span class="stat-label">❌ Rejected</span><span class="stat-value red">'+re+'</span><span class="stat-delta">'+(100-sRate-cRate)+'% tong so</span></div>'+
       '</div>';
 
-    /* Store globals */
-    window._csAll      = data.all      || [];
-    window._csPlatforms= data.platforms|| [];
-    window._csRoles    = data.roles    || [];
-    window._csPColors  = data.pColors  || {};
-    window._csWeekLabel= data.weekLabel;
+    /* Globals */
+    window._csAll     =data.all     ||[];
+    window._csPlatforms=data.platforms||[];
+    window._csPColors  =data.pColors  ||{};
 
-    /* ══ CHART BUILDER ══
-       Unified mode: X = weeks, grouped cols per platform, stacked verdict
-       rangeVal = 0 → All time (collapse all weeks into one group)
-    */
-    window._buildCSChart = function(rangeVal) {
-      var wrap = document.getElementById("cs-chart-outer");
-      if (!wrap) return;
+    /* ══ CHART: full-width, 1 col per platform, stacked verdict ══ */
+    window._buildCSChart=function(){
+      var wrap=document.getElementById("cs-chart-outer");
+      if(!wrap)return;
 
-      var all       = window._csAll;
-      var platforms = window._csPlatforms;
-      var pColors   = window._csPColors;
-      var isAllTime = rangeVal === 0;
+      var all      =window._csAll;
+      var platforms=window._csPlatforms;
+      var pColors  =window._csPColors;
 
-      /* filter rows by range */
-      var filtered;
-      if (isAllTime) {
-        filtered = all;
-      } else {
-        var now = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
-        var cutoff = new Date(now); cutoff.setDate(cutoff.getDate()-rangeVal+1);
-        var cutoffStr = cutoff.getFullYear()+"-"+String(cutoff.getMonth()+1).padStart(2,"0")+"-"+String(cutoff.getDate()).padStart(2,"0");
-        filtered = all.filter(function(r){return r._dateStr>=cutoffStr;});
-      }
-
-      /* active platforms */
-      var activePlatforms = platforms.filter(function(p){
-        return filtered.some(function(r){return r._platform===p;});
-      });
-
-      if (!filtered.length) {
-        wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;gap:8px;color:var(--text-muted)">'+
+      if(!all.length){
+        wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:220px;gap:8px;color:var(--text-muted)">'+
           '<i class="ti ti-chart-bar-off" style="font-size:32px"></i>'+
-          '<span style="font-size:13px">Chua co du lieu trong khoang thoi gian nay</span></div>';
+          '<span style="font-size:13px">Chua co du lieu</span></div>';
         return;
       }
 
-      /* build week buckets */
-      var weeks; // array of {key, label}
-      if (isAllTime) {
-        weeks = [{ key: "__all__", label: "All time" }];
-      } else {
-        var weekSet = {};
-        filtered.forEach(function(r){ if(r._weekKey) weekSet[r._weekKey]=true; });
-        /* fill continuous weeks */
-        var now2 = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
-        var cutoff2 = new Date(now2); cutoff2.setDate(cutoff2.getDate()-rangeVal+1);
-        var wk = new Date(cutoff2);
-        var d2=wk.getDay(); var dif=d2===0?-6:1-d2; wk.setDate(wk.getDate()+dif);
-        while (wk<=now2){
-          var wks=wk.getFullYear()+"-"+String(wk.getMonth()+1).padStart(2,"0")+"-"+String(wk.getDate()).padStart(2,"0");
-          weekSet[wks]=true; wk.setDate(wk.getDate()+7);
-        }
-        weeks = Object.keys(weekSet).sort().map(function(k){
-          return { key:k, label: window._csWeekLabel ? window._csWeekLabel(k) : k };
-        });
-      }
+      /* per-platform data */
+      var ptData=platforms.map(function(p){
+        var rows=all.filter(function(r){return r._platform===p;});
+        var s=rows.filter(function(r){return r._verdict==="strong";}).length;
+        var c=rows.filter(function(r){return r._verdict==="consider";}).length;
+        var rv=rows.filter(function(r){return r._verdict==="rejected";}).length;
+        return{p:p,s:s,c:c,r:rv,total:s+c+rv};
+      }).filter(function(d){return d.total>0;});
 
-      /* compute max for Y axis */
-      var maxVal = 0;
-      weeks.forEach(function(w){
-        activePlatforms.forEach(function(p){
-          var rows = filtered.filter(function(r){
-            return r._platform===p && (w.key==="__all__" || r._weekKey===w.key);
-          });
-          if (rows.length > maxVal) maxVal = rows.length;
-        });
-      });
-      if (!maxVal) maxVal = 1;
+      var maxVal=Math.max.apply(null,ptData.map(function(d){return d.total;}));
+      if(!maxVal)maxVal=1;
 
-      /* Y axis ticks */
-      var tickCount = 4;
-      var tickStep  = Math.ceil(maxVal / tickCount);
-      var ticks = [];
-      for (var t=0; t<=tickCount; t++) ticks.push(t*tickStep);
-      var yMax = ticks[ticks.length-1];
+      /* Y ticks */
+      var rawStep=maxVal/4;
+      var tickStep=Math.ceil(rawStep);
+      if(tickStep<1)tickStep=1;
+      var ticks=[];
+      for(var t=0;t<=Math.ceil(maxVal/tickStep);t++)ticks.push(t*tickStep);
+      var yMax=ticks[ticks.length-1]||1;
 
-      /* dimensions */
-      var COL_W    = Math.max(18, Math.min(40, Math.floor(480 / Math.max(weeks.length * activePlatforms.length, 1))));
-      var GROUP_GAP= 20;
-      var CHART_H  = 200; /* px, inner bar area */
-      var Y_LABEL_W= 32;
+      var CHART_H=220;
+      var Y_W=28;
 
-      /* render */
-      var gridLines = ticks.map(function(tick){
-        var pct = tick/yMax*100;
-        return '<div style="position:absolute;left:0;right:0;bottom:'+pct+'%;border-top:1px dashed var(--border);pointer-events:none">'+
-          '<span style="position:absolute;left:-'+Y_LABEL_W+'px;transform:translateY(-50%);font-size:10px;color:var(--text-muted);font-family:var(--font-mono);width:'+(Y_LABEL_W-6)+'px;text-align:right">'+tick+'</span>'+
+      /* grid lines */
+      var gridHTML=ticks.map(function(tick){
+        var pct=tick/yMax*100;
+        return '<div style="position:absolute;left:0;right:0;bottom:'+pct+'%;border-top:1px dashed rgba(255,255,255,.07);pointer-events:none">'+
+          '<span style="position:absolute;right:calc(100% + 6px);transform:translateY(-50%);font-size:10px;color:var(--text-muted);font-family:var(--font-mono);white-space:nowrap">'+tick+'</span>'+
         '</div>';
-      }).join("");
+      }).join("")+
+      '<div style="position:absolute;bottom:0;left:0;right:0;border-top:1px solid var(--border-strong)"></div>';
 
-      var groups = weeks.map(function(w){
-        var cols = activePlatforms.map(function(p){
-          var rows = filtered.filter(function(r){
-            return r._platform===p && (w.key==="__all__"||r._weekKey===w.key);
-          });
-          var s  = rows.filter(function(r){return r._verdict==="strong";}).length;
-          var c  = rows.filter(function(r){return r._verdict==="consider";}).length;
-          var rv = rows.filter(function(r){return r._verdict==="rejected";}).length;
-          var tot= s+c+rv;
-          if (!tot) return "";
-          var pctH   = tot/yMax*100;
-          var color  = pColors[p]||"var(--accent)";
-          var tipHtml= '<strong>'+p+(w.key!=="__all__"?" — "+w.label:"")+'</strong><br>'+
-            '<span style="color:#4ade80">💚 Strong: '+s+'</span><br>'+
-            '<span style="color:#fbbf24">🟡 Consider: '+c+'</span><br>'+
-            '<span style="color:#f87171">❌ Rejected: '+rv+'</span><br>'+
-            '<span style="color:var(--text-muted)">Total: '+tot+'</span>';
+      /* columns */
+      var colsHTML=ptData.map(function(d){
+        var color=pColors[d.p]||"var(--accent)";
+        var pctH =d.total/yMax*100;
+        var pctS =d.total>0?d.s/d.total*100:0;
+        var pctC =d.total>0?d.c/d.total*100:0;
+        var pctR =100-pctS-pctC;
 
-          /* stacked segments */
-          var segments = "";
-          if (rv>0) segments+='<div style="flex:'+rv+';background:#f87171;min-height:3px;border-radius:0"></div>';
-          if (c>0)  segments+='<div style="flex:'+c+';background:#fbbf24;min-height:3px;border-radius:0"></div>';
-          if (s>0)  segments+='<div style="flex:'+s+';background:#4ade80;min-height:3px;border-radius:0"></div>';
+        var tipHtml='<strong>'+d.p+'</strong><br>'+
+          '<span style="color:#4ade80">💚 Strong hire: '+d.s+'</span><br>'+
+          '<span style="color:#fbbf24">🟡 Consider: '+d.c+'</span><br>'+
+          '<span style="color:#f87171">❌ Rejected: '+d.r+'</span><br>'+
+          '<span style="color:var(--text-muted)">Total: '+d.total+'</span>';
 
-          return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:default" data-tip="'+tipHtml.replace(/"/g,"&quot;")+'">'+
-            /* bar */
-            '<div style="position:relative;width:'+COL_W+'px;height:'+CHART_H+'px;display:flex;flex-direction:column;justify-content:flex-end">'+
-              '<div style="width:100%;height:'+pctH+'%;display:flex;flex-direction:column-reverse;border-radius:3px 3px 0 0;overflow:hidden;border-bottom:2px solid '+color+'">'+
-                segments+
-              '</div>'+
+        return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;min-width:0" '+
+               'data-tip="'+tipHtml.replace(/"/g,"&quot;")+'">'+
+          /* bar column */
+          '<div style="width:100%;height:'+CHART_H+'px;position:relative;display:flex;flex-direction:column;justify-content:flex-end">'+
+            '<div style="width:100%;height:'+Math.max(pctH,d.total>0?2:0)+'%;'+
+                 'display:flex;flex-direction:column-reverse;'+
+                 'border-radius:4px 4px 0 0;overflow:hidden;'+
+                 'border-bottom:3px solid '+color+'">'+
+              (d.r>0?'<div style="flex:'+Math.max(pctR,2)+';background:#f87171"></div>':'')+
+              (d.c>0?'<div style="flex:'+Math.max(pctC,2)+';background:#fbbf24"></div>':'')+
+              (d.s>0?'<div style="flex:'+Math.max(pctS,2)+';background:#4ade80"></div>':'')+
             '</div>'+
-            /* platform dot + count */
-            '<div style="display:flex;flex-direction:column;align-items:center;gap:2px">'+
-              '<div style="width:8px;height:8px;border-radius:50%;background:'+color+'"></div>'+
-              '<span style="font-size:10px;font-weight:600;color:var(--text-secondary)">'+tot+'</span>'+
-            '</div>'+
-          '</div>';
-        }).join("");
-
-        if (!cols.trim()) return "";
-
-        return '<div style="display:flex;flex-direction:column;align-items:center;gap:0">'+
-          '<div style="display:flex;align-items:flex-end;gap:4px">'+cols+'</div>'+
-          '<div style="font-size:10px;color:var(--text-muted);margin-top:8px;white-space:nowrap;text-align:center;padding:0 4px">'+w.label+'</div>'+
-        '</div>';
-      }).join("");
-
-      /* legend row */
-      var verdictLegend =
-        '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#4ade80;display:inline-block"></span><span>Strong hire</span></span>'+
-        '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#fbbf24;display:inline-block"></span><span>Consider</span></span>'+
-        '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#f87171;display:inline-block"></span><span>Rejected</span></span>';
-
-      var platformLegend = activePlatforms.map(function(p){
-        var color=pColors[p]||"var(--accent)";
-        return '<span style="display:inline-flex;align-items:center;gap:5px">'+
-          '<span style="width:10px;height:10px;border-radius:50%;background:'+color+';display:inline-block"></span>'+
-          '<span>'+p+'</span>'+
-        '</span>';
-      }).join("");
-
-      wrap.innerHTML =
-        /* legend */
-        '<div style="display:flex;flex-wrap:wrap;gap:14px;padding:0 0 20px;font-size:11px;color:var(--text-muted)">'+
-          verdictLegend+
-          '<span style="color:var(--border-strong)">|</span>'+
-          platformLegend+
-        '</div>'+
-        /* chart area */
-        '<div style="position:relative;padding-left:'+(Y_LABEL_W+8)+'px;overflow-x:auto">'+
-          /* Y grid */
-          '<div style="position:absolute;left:'+(Y_LABEL_W+8)+'px;right:0;top:0;height:'+CHART_H+'px;pointer-events:none">'+
-            gridLines+
-            '<div style="position:absolute;bottom:0;left:0;right:0;border-top:1px solid var(--border-strong)"></div>'+
           '</div>'+
+          /* label row */
+          '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:100%">'+
+            '<span style="width:9px;height:9px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
+            '<span style="font-size:11px;color:var(--text-secondary);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;text-align:center">'+d.p+'</span>'+
+            '<span style="font-size:13px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono)">'+d.total+'</span>'+
+          '</div>'+
+        '</div>';
+      }).join("");
+
+      /* legend */
+      var legendHTML=
+        '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:20px;font-size:11px;color:var(--text-muted)">'+
+          '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:#4ade80"></span>Strong hire</span>'+
+          '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:#fbbf24"></span>Consider</span>'+
+          '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:#f87171"></span>Rejected</span>'+
+          '<span style="color:var(--border-strong)">|</span>'+
+          ptData.map(function(d){
+            var color=pColors[d.p]||"var(--accent)";
+            return'<span style="display:inline-flex;align-items:center;gap:6px">'+
+              '<span style="width:9px;height:9px;border-radius:50%;background:'+color+'"></span>'+d.p+'</span>';
+          }).join("")+
+        '</div>';
+
+      wrap.innerHTML=legendHTML+
+        '<div style="position:relative;padding-left:'+(Y_W+4)+'px">'+
+          /* grid */
+          '<div style="position:absolute;left:'+(Y_W+4)+'px;right:0;top:0;height:'+CHART_H+'px">'+gridHTML+'</div>'+
           /* bars */
-          '<div style="display:flex;align-items:flex-end;gap:'+GROUP_GAP+'px;height:'+(CHART_H+36)+'px;padding-bottom:0;position:relative">'+
-            groups+
+          '<div style="display:flex;align-items:flex-end;gap:12px;height:'+(CHART_H+56)+'px;padding:0 8px">'+
+            colsHTML+
           '</div>'+
         '</div>';
 
       /* tooltips */
+      var tip=document.getElementById("_cs_tip");
+      if(!tip){
+        tip=document.createElement("div");
+        tip.id="_cs_tip";
+        tip.style.cssText="position:fixed;z-index:99999;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-primary);white-space:nowrap;line-height:1.9;pointer-events:none;display:none;font-family:var(--font-body);box-shadow:0 4px 20px rgba(0,0,0,.35)";
+        document.body.appendChild(tip);
+      }
       wrap.querySelectorAll("[data-tip]").forEach(function(el){
-        var tip=document.getElementById("_cs_tip");
-        if (!tip){
-          tip=document.createElement("div");
-          tip.id="_cs_tip";
-          tip.style.cssText="position:fixed;z-index:99999;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-primary);white-space:nowrap;line-height:1.9;pointer-events:none;display:none;font-family:var(--font-body);box-shadow:0 4px 16px rgba(0,0,0,.3)";
-          document.body.appendChild(tip);
-        }
         el.addEventListener("mouseenter",function(){
           tip.innerHTML=el.dataset.tip.replace(/&quot;/g,'"');
           tip.style.display="block";
@@ -360,23 +278,18 @@ window.TOOL_REGISTRY.push({
       });
     };
 
-    /* Chart section HTML */
-    var chartHTML =
+    /* Chart HTML */
+    var chartHTML=
       '<div class="members-section" style="margin-bottom:0">'+
         '<div class="section-header">'+
           '<span class="section-title">Theo nen tang</span>'+
-          '<select id="cs-chart-range" style="background:var(--bg-hover);border:1px solid var(--border-strong);color:var(--text-primary);font-size:12px;padding:4px 10px;border-radius:var(--radius-sm);cursor:pointer;outline:none">'+
-            '<option value="7" selected>7 ngay</option>'+
-            '<option value="14">2 tuan</option>'+
-            '<option value="30">1 thang</option>'+
-            '<option value="0">All time</option>'+
-          '</select>'+
+          '<span class="section-meta" style="font-size:11px;color:var(--text-muted)">All time</span>'+
         '</div>'+
-        '<div id="cs-chart-outer" style="padding:20px 20px 8px"></div>'+
+        '<div id="cs-chart-outer" style="padding:20px 24px 16px"></div>'+
       '</div>';
 
     /* Summary table */
-    var summaryRows = (data.platforms||[]).map(function(p){
+    var summaryRows=(data.platforms||[]).map(function(p){
       var rows=(data.all||[]).filter(function(r){return r._platform===p;});
       var s=rows.filter(function(r){return r._verdict==="strong";}).length;
       var c=rows.filter(function(r){return r._verdict==="consider";}).length;
@@ -384,16 +297,15 @@ window.TOOL_REGISTRY.push({
       var t=rows.length;
       var sRate=t>0?Math.round(s/t*100):0;
       var color=(data.pColors||{})[p]||"var(--accent)";
-      return '<tr>'+
+      return'<tr>'+
         '<td><span style="display:inline-flex;align-items:center;gap:8px">'+
           '<span style="width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
-          '<span style="font-weight:500">'+p+'</span>'+
-        '</span></td>'+
+          '<span style="font-weight:500">'+p+'</span></span></td>'+
         '<td style="text-align:center;font-weight:600;color:#4ade80">'+s+'</td>'+
         '<td style="text-align:center;font-weight:600;color:#fbbf24">'+c+'</td>'+
         '<td style="text-align:center;font-weight:600;color:#f87171">'+rv+'</td>'+
         '<td style="text-align:center;font-family:var(--font-mono);font-weight:700">'+t+'</td>'+
-        '<td style="min-width:110px">'+
+        '<td style="min-width:120px">'+
           '<div style="display:flex;align-items:center;gap:8px">'+
             '<div style="flex:1;height:6px;background:var(--bg-hover);border-radius:3px;overflow:hidden">'+
               '<div style="height:100%;width:'+sRate+'%;background:#4ade80;border-radius:3px"></div>'+
@@ -404,7 +316,7 @@ window.TOOL_REGISTRY.push({
       '</tr>';
     }).join("");
 
-    var summaryHTML =
+    var summaryHTML=
       '<div class="members-section">'+
         '<div class="section-header"><span class="section-title">Tong hop theo nen tang</span><span class="section-meta">All time</span></div>'+
         '<table class="members-table">'+
@@ -420,36 +332,35 @@ window.TOOL_REGISTRY.push({
         '</table>'+
       '</div>';
 
-    /* Candidates table — tabbed by role */
+    /* Candidates table */
     var verdictOrder={strong:0,consider:1,rejected:2};
     var sorted=(data.all||[]).slice().sort(function(a,b){
-      if (b._dateStr!==a._dateStr) return b._dateStr.localeCompare(a._dateStr);
-      return (verdictOrder[a._verdict]||0)-(verdictOrder[b._verdict]||0);
+      if(b._dateStr!==a._dateStr)return b._dateStr.localeCompare(a._dateStr);
+      return(verdictOrder[a._verdict]||0)-(verdictOrder[b._verdict]||0);
     });
 
     var VERDICT_CFG={
-      strong:  {label:"💚 STRONG HIRE", pillClass:"submitted"},
-      consider:{label:"🟡 CONSIDER",    pillClass:""},
-      rejected:{label:"❌ REJECTED",     pillClass:"missing"}
+      strong:  {label:"💚 STRONG HIRE",pillClass:"submitted"},
+      consider:{label:"🟡 CONSIDER",   pillClass:""},
+      rejected:{label:"❌ REJECTED",    pillClass:"missing"}
     };
 
     function buildRows(rows){
-      if (!rows.length) return '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:32px">'+
+      if(!rows.length)return'<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:32px">'+
         '<i class="ti ti-inbox" style="font-size:24px;display:block;margin-bottom:8px"></i>Chua co ung vien</td></tr>';
       return rows.map(function(r){
         var vc=VERDICT_CFG[r._verdict]||{label:r._verdict,pillClass:""};
         var cvLink=r["Portfolio"]
-          ?'<a href="'+r["Portfolio"]+'" target="_blank" style="color:var(--accent);font-size:11px;white-space:nowrap"><i class="ti ti-file-cv"></i> CV</a>'
+          ?'<a href="'+r["Portfolio"]+'" target="_blank" style="color:var(--accent);font-size:11px"><i class="ti ti-file-cv"></i> CV</a>'
           :'<span style="color:var(--text-muted)">—</span>';
         var pColor=(data.pColors||{})[r._platform]||"var(--text-muted)";
-        return '<tr>'+
+        return'<tr>'+
           '<td style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);white-space:nowrap">'+r._dateStr+'</td>'+
           '<td style="font-weight:500">'+r["Name"]+'</td>'+
           '<td style="font-size:12px;color:var(--text-secondary)">'+r._role+'</td>'+
           '<td><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)">'+
             '<span style="width:7px;height:7px;border-radius:50%;background:'+pColor+';flex-shrink:0"></span>'+
-            r._platform+
-          '</span></td>'+
+            r._platform+'</span></td>'+
           '<td><span class="status-pill '+vc.pillClass+'" style="font-size:10px;letter-spacing:.03em">'+vc.label+'</span></td>'+
           '<td style="font-family:var(--font-mono);font-weight:600">'+r["Total Score Display"]+'</td>'+
           '<td>'+cvLink+'</td>'+
@@ -457,23 +368,22 @@ window.TOOL_REGISTRY.push({
       }).join("");
     }
 
-    var roles = data.roles || [];
-    var roleTabBar =
-      '<div style="display:flex;gap:0;border-bottom:1px solid var(--border);overflow-x:auto;margin-bottom:0">'+
+    var roles=data.roles||[];
+    var roleTabBar=
+      '<div style="display:flex;gap:0;border-bottom:1px solid var(--border);overflow-x:auto">'+
       ['Tat ca'].concat(roles).map(function(role,idx){
         var count=role==='Tat ca'?sorted.length:sorted.filter(function(r){return r._role===role;}).length;
         var isActive=idx===0;
-        return '<button class="cs-role-tab" data-role="'+role+'" style="'+
+        return'<button class="cs-role-tab" data-role="'+role+'" style="'+
           'padding:9px 16px;font-size:12px;font-family:var(--font-body);background:transparent;border:none;'+
           'border-bottom:2px solid '+(isActive?'var(--accent)':'transparent')+';'+
           'color:'+(isActive?'var(--accent)':'var(--text-muted)')+';'+
           'cursor:pointer;white-space:nowrap;transition:color .15s,border-color .15s">'+
           role+' <span style="font-size:10px;opacity:.65">('+count+')</span>'+
         '</button>';
-      }).join("")+
-      '</div>';
+      }).join("")+'</div>';
 
-    var candidatesHTML =
+    var candidatesHTML=
       '<div class="members-section">'+
         '<div class="section-header">'+
           '<span class="section-title">Ung vien theo vi tri</span>'+
@@ -481,15 +391,13 @@ window.TOOL_REGISTRY.push({
         '</div>'+
         roleTabBar+
         '<table class="members-table">'+
-          '<thead><tr>'+
-            '<th>Ngay</th><th>Ten</th><th>Vi tri</th><th>Nen tang</th><th>Ket qua</th><th>Diem</th><th>CV</th>'+
-          '</tr></thead>'+
+          '<thead><tr><th>Ngay</th><th>Ten</th><th>Vi tri</th><th>Nen tang</th><th>Ket qua</th><th>Diem</th><th>CV</th></tr></thead>'+
           '<tbody id="cs-role-tbody">'+buildRows(sorted)+'</tbody>'+
         '</table>'+
       '</div>';
 
     /* Info tab */
-    var infoHTML =
+    var infoHTML=
       '<div class="tool-info-page">'+
         '<div class="tool-info-hero">'+
           '<div class="tool-info-icon"><i class="ti ti-user-check"></i></div>'+
@@ -528,30 +436,23 @@ window.TOOL_REGISTRY.push({
       '</div>';
 
     /* Store + init */
-    window._csTrackingHTML = statsHTML + chartHTML + summaryHTML + candidatesHTML;
-    window._csInfoHTML     = infoHTML;
-    window._csSorted       = sorted;
-    window._csBuildRows    = buildRows;
+    window._csTrackingHTML=statsHTML+chartHTML+summaryHTML+candidatesHTML;
+    window._csInfoHTML    =infoHTML;
+    window._csSorted      =sorted;
+    window._csBuildRows   =buildRows;
 
-    window._initCSTabs = function() {
-      var tracking = document.getElementById("tab-tracking");
-      var info     = document.getElementById("tab-info");
-      if (tracking) tracking.innerHTML = window._csTrackingHTML;
-      if (info)     info.innerHTML     = window._csInfoHTML;
+    window._initCSTabs=function(){
+      var tracking=document.getElementById("tab-tracking");
+      var info    =document.getElementById("tab-info");
+      if(tracking)tracking.innerHTML=window._csTrackingHTML;
+      if(info)    info.innerHTML    =window._csInfoHTML;
 
       setTimeout(function(){
-        /* init chart */
-        if (window._buildCSChart) {
-          window._buildCSChart(7);
-          var sel=document.getElementById("cs-chart-range");
-          if (sel) sel.addEventListener("change",function(){
-            window._buildCSChart(parseInt(this.value));
-          });
-        }
+        if(window._buildCSChart)window._buildCSChart();
 
         /* role tabs */
         var roleTabs=document.querySelectorAll(".cs-role-tab");
-        var tbody=document.getElementById("cs-role-tbody");
+        var tbody   =document.getElementById("cs-role-tbody");
         roleTabs.forEach(function(btn){
           btn.addEventListener("click",function(){
             roleTabs.forEach(function(b){
@@ -562,12 +463,12 @@ window.TOOL_REGISTRY.push({
             btn.style.color="var(--accent)";
             var role=btn.dataset.role;
             var rows=role==="Tat ca"
-              ? window._csSorted
-              : (window._csSorted||[]).filter(function(r){return r._role===role;});
-            if (tbody) tbody.innerHTML=window._csBuildRows(rows);
+              ?window._csSorted
+              :(window._csSorted||[]).filter(function(r){return r._role===role;});
+            if(tbody)tbody.innerHTML=window._csBuildRows(rows);
           });
         });
-      }, 50);
+      },50);
 
       /* main tabs */
       var btns =document.querySelectorAll(".tab-btn");
@@ -578,14 +479,9 @@ window.TOOL_REGISTRY.push({
           panes.forEach(function(p){p.style.display="none";p.classList.remove("active");});
           btn.classList.add("active");
           var target=document.getElementById("tab-"+btn.dataset.tab);
-          if (target){target.style.display="block";target.classList.add("active");}
-          if (btn.dataset.tab==="tracking"){
-            setTimeout(function(){
-              if (window._buildCSChart){
-                var sel=document.getElementById("cs-chart-range");
-                window._buildCSChart(sel?parseInt(sel.value):7);
-              }
-            },50);
+          if(target){target.style.display="block";target.classList.add("active");}
+          if(btn.dataset.tab==="tracking"){
+            setTimeout(function(){if(window._buildCSChart)window._buildCSChart();},50);
           }
         });
       });
