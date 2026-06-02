@@ -7,7 +7,7 @@ window.TOOL_REGISTRY.push({
   icon:        "ti-sun-moon",
   status:      "active",
 
-  _APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxCjcIHzxvgxm_kjDKAeutMOFogvC7rAMWVW9VT_prcusv-FUYcAdvekh5IUxygxW0olw/exec",
+  _APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwEtThlKbWkESXSA1LDB67_bdeBFLZxK39H3OiI976bYIKEDqVj2_WJqvd_ptm3NzFMTQ/exec",
 
   _MEMBERS: {
     "ou_72582d819ebd02dbe9cc0e2e08908099": "Minh Quân",
