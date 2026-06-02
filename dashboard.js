@@ -155,6 +155,8 @@ async function openToolDetail(toolId) {
     requestAnimationFrame(function() {
       if (toolId === "daily-update" && window._initDUTabs) {
         window._initDUTabs();
+      } else if (toolId === "candidate-scoring" && window._initCSTabs) {
+        window._initCSTabs();
       } else if (toolId === "bd-mkt-daily" && window._initBDTabs) {
         window._initBDTabs();
       } else {
