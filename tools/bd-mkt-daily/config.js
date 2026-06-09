@@ -8,11 +8,9 @@ window.TOOL_REGISTRY.push({
   status:      "active",
 
   _MEMBERS: {
-    "ou_72582d819ebd02dbe9cc0e2e08908099": "Minh Quân",
     "ou_3ff4b0c1ae98c259c7006993a41e8d84": "Huyền Linh",
     "ou_1f71198623d1dc71688fe1312390f7ee": "Nga Linh",
     "ou_d7d124081bfa6eabfb12e85166eca85f": "Giang",
-    "ou_db7bca8d6a07437aaab422849ddc2c69": "Chi",
     "ou_6993f5104b93fe3d774304bc9637884d": "Linh",
     "ou_12548715eba533527311e76207c95ce4": "Minh Anh"
   },
