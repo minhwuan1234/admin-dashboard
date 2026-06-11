@@ -6,7 +6,7 @@
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 /* ── OpenAI config ── */
-var _CS_WORKER_URL = "https://admin-dashboard.minhwuan889.workers.dev";
+var _CS_WORKER_URL = "https://admin-dashboard.minhwuan889.workers.dev/";
 
 
 /* ── ISO week helper ── */
