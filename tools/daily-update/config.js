@@ -5,7 +5,9 @@
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 /* ── Worker URL ── */
-var _DU_WORKER_URL = "https://admin-dashboard.minhwuan889.workers.dev";
+var _DU_WORKER_URL = "https://admin-dashboard.minhwuan889.workers.dev/";
+
+/* ── OpenAI config (dùng chung key với candidate-scoring) ── */
 
 /* ── ISO week helper ── */
 function _duGetISOWeek(date) {
