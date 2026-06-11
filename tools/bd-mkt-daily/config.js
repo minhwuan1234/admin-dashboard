@@ -104,27 +104,44 @@ function _bdAggregate(data) {
 
 /* ── Call OpenAI API ── */
 async function _bdCallOpenAI(summary) {
-  var systemPrompt =
-    "Bạn là PM assistant của F.Learning Studio, phụ trách team BD-MKT. " +
-    "Nhận vào data daily report (morning plan + evening actual) của team, " +
-    "trả về insight ngắn gọn, actionable bằng tiếng Việt. " +
-    "Format output CHÍNH XÁC theo JSON sau, không thêm gì ngoài JSON:\n" +
-    "{\n" +
-    "  \"summary\": \"1-2 câu tổng quan hôm nay\",\n" +
-    "  \"highlights\": [\n" +
-    "    {\"type\": \"positive|warning|neutral\", \"text\": \"insight ngắn\"},\n" +
-    "    ...\n" +
-    "  ],\n" +
-    "  \"morningEveningGap\": \"1 câu nhận xét về chênh lệch giữa morning và evening submit rate\",\n" +
-    "  \"planActualInsight\": \"1 câu về plan vs actual execution (over/under estimate)\",\n" +
-    "  \"consistencyInsight\": \"1 câu về consistency submit cả 2 buổi trong tuần\",\n" +
-    "  \"weeklyTrend\": \"1 câu xu hướng so với tuần trước\",\n" +
-    "  \"recommendations\": [\n" +
-    "    \"action cụ thể 1\",\n" +
-    "    \"action cụ thể 2\"\n" +
-    "  ]\n" +
-    "}\n" +
-    "Highlights tối đa 4. Recommendations tối đa 3. Không nêu tên cá nhân. Ngắn gọn, không sáo rỗng.";
+  var payload = {
+    model:       _BD_OPENAI_MODEL,
+    max_tokens:  800,
+    temperature: 0.4,
+    messages: [
+      {
+        role: "system",
+        content: [
+          "Ban la PM assistant cua F.Learning Studio, phu trach team BD-MKT.",
+          "Nhan vao data daily report (morning plan + evening actual) cua team,",
+          "tra ve insight ngan gon, actionable bang tieng Viet.",
+          "Format output CHINH XAC theo JSON sau, khong them gi ngoai JSON:",
+          '{"summary":"1-2 cau tong quan hom nay","highlights":[{"type":"positive|warning|neutral","text":"insight ngan"}],"morningEveningGap":"1 cau","planActualInsight":"1 cau","consistencyInsight":"1 cau","weeklyTrend":"1 cau","recommendations":["action 1","action 2"]}',
+          "Highlights toi da 4. Recommendations toi da 3. Khong neu ten ca nhan. Ngan gon."
+        ].join(" ")
+      },
+      {
+        role: "user",
+        content: "Data BD-MKT tuan " + summary.generatedWeek + ": " + JSON.stringify(summary)
+      }
+    ]
+  };
+
+  var res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type":  "application/json",
+      "Authorization": "Bearer " + (localStorage.getItem("fl_openai_key") || _BD_OPENAI_KEY)
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) throw new Error("OpenAI HTTP " + res.status);
+  var json = await res.json();
+  var raw = json.choices[0].message.content.trim()
+    .replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+  return JSON.parse(raw);
+}
 
   var userPrompt = "Data BD-MKT daily report tuần " + summary.generatedWeek + ":\n" + JSON.stringify(summary, null, 2);
 
