@@ -17,6 +17,96 @@ let toolDataCache = {};
 
 const $ = (id) => document.getElementById(id);
 
+/* ══════════════════════════════
+   API KEY BOOTSTRAP
+   Lưu key vào localStorage, apply cho tất cả tools
+   ══════════════════════════════ */
+(function() {
+  var KEY_NAME = "fl_openai_key";
+
+  function applyKey(key) {
+    /* Ghi đè biến của từng tool config */
+    if (typeof _CS_OPENAI_KEY !== "undefined") _CS_OPENAI_KEY = key; // eslint-disable-line
+    if (typeof _DU_OPENAI_KEY !== "undefined") _DU_OPENAI_KEY = key; // eslint-disable-line
+    if (typeof _BD_OPENAI_KEY !== "undefined") _BD_OPENAI_KEY = key; // eslint-disable-line
+    window._FL_OPENAI_KEY = key;
+  }
+
+  function showKeyModal(onSuccess) {
+    var modal = document.createElement("div");
+    modal.id = "_fl_key_modal";
+    modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)";
+    modal.innerHTML =
+      '<div style="background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:var(--radius);padding:32px;width:440px;max-width:92vw">' +
+        '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">' +
+          '<div style="width:40px;height:40px;background:var(--accent-dim);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;color:var(--accent);flex-shrink:0">' +
+            '<i class="ti ti-key" style="font-size:20px"></i>' +
+          '</div>' +
+          '<div>' +
+            '<p style="font-family:var(--font-display);font-size:16px;font-weight:600;color:var(--text-primary)">OpenAI API Key</p>' +
+            '<p style="font-size:12px;color:var(--text-muted);margin-top:3px">Dùng cho tính năng AI Insight. Lưu local, không gửi đi đâu ngoài OpenAI.</p>' +
+          '</div>' +
+        '</div>' +
+        '<input id="_fl_key_input" type="password" placeholder="sk-..." autocomplete="off" style="' +
+          'width:100%;padding:10px 14px;background:var(--bg-card);' +
+          'border:1px solid var(--border-strong);border-radius:var(--radius-sm);' +
+          'color:var(--text-primary);font-family:var(--font-mono);font-size:13px;' +
+          'outline:none;margin-bottom:8px;box-sizing:border-box' +
+        '" />' +
+        '<p id="_fl_key_err" style="font-size:12px;color:var(--red);margin-bottom:12px;min-height:16px"></p>' +
+        '<div style="display:flex;gap:10px">' +
+          '<button id="_fl_key_save" style="flex:1;padding:10px;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">Lưu & tiếp tục</button>' +
+          '<button id="_fl_key_skip" style="padding:10px 16px;background:none;color:var(--text-muted);border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:13px;cursor:pointer;font-family:var(--font-body)">Bỏ qua</button>' +
+        '</div>' +
+        '<p style="font-size:11px;color:var(--text-muted);margin-top:14px;line-height:1.6">' +
+          'Key được lưu trong localStorage của browser này. Để đổi key sau: mở console → <code style="font-family:var(--font-mono);background:var(--bg-hover);padding:1px 5px;border-radius:3px">localStorage.removeItem("fl_openai_key")</code> rồi reload.' +
+        '</p>' +
+      '</div>';
+
+    document.body.appendChild(modal);
+
+    var input  = document.getElementById("_fl_key_input");
+    var errEl  = document.getElementById("_fl_key_err");
+    var saveBtn = document.getElementById("_fl_key_save");
+    var skipBtn = document.getElementById("_fl_key_skip");
+
+    input.focus();
+
+    /* Enter để save */
+    input.addEventListener("keydown", function(e) {
+      if (e.key === "Enter") saveBtn.click();
+    });
+
+    saveBtn.addEventListener("click", function() {
+      var key = input.value.trim();
+      if (!key) { errEl.textContent = "Vui lòng nhập key."; return; }
+      if (!key.startsWith("sk-")) { errEl.textContent = "Key không hợp lệ — phải bắt đầu bằng sk-"; return; }
+      localStorage.setItem(KEY_NAME, key);
+      applyKey(key);
+      document.body.removeChild(modal);
+      onSuccess();
+    });
+
+    skipBtn.addEventListener("click", function() {
+      document.body.removeChild(modal);
+      onSuccess();
+    });
+  }
+
+  /* Kiểm tra key đã có chưa */
+  var stored = localStorage.getItem(KEY_NAME);
+  if (stored) {
+    applyKey(stored);
+  } else {
+    /* Defer init cho đến khi user nhập key / bỏ qua */
+    document.addEventListener("DOMContentLoaded", function() {
+      showKeyModal(function() { init(); });
+    });
+    /* Ngăn DOMContentLoaded bên dưới chạy trước */
+    window._fl_skip_auto_init = true;
+  }
+})();
+
 /* ── Utils truyen vao fetchData cua tung tool ── */
 const UTILS = {
   fetchJson: async function(url, bustCache) {
@@ -150,7 +240,6 @@ async function openToolDetail(toolId) {
   }
   $("detail-body").innerHTML = html;
 
-  // After DOM inject: init tabs — each tool registers its own _init[X]Tabs
   requestAnimationFrame(function() {
     requestAnimationFrame(function() {
       if (toolId === "daily-update" && window._initDUTabs) {
@@ -235,4 +324,6 @@ async function init() {
   updateLastUpdated();
 }
 
-document.addEventListener("DOMContentLoaded", init);
+document.addEventListener("DOMContentLoaded", function() {
+  if (!window._fl_skip_auto_init) init();
+});
