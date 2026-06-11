@@ -78,7 +78,6 @@ async function _csCallOpenAI(summary) {
   var sysPrompt = 'Bạn là talent analyst của F.Learning Studio — công ty thiết kế e-learning tại Việt Nam. Nhận vào aggregated data tuyển dụng (không có thông tin cá nhân), phân tích và trả về insight bằng tiếng Việt. Trả về JSON THUẦN TÚY, không thêm gì ngoài JSON. Format: {"summary":"Tổng quan 1-2 câu về tình hình tuyển dụng tuần này","highlights":[{"type":"positive|warning|neutral","text":"Điểm đáng chú ý ngắn gọn"}],"platformInsight":"Nhận xét về platform nào đang hiệu quả nhất hoặc kém nhất","roleInsight":"Nhận xét về vị trí nào đang khan hiếm ứng viên qualified","weeklyTrend":"Xu hướng so với tuần trước (tăng/giảm/ổn định)","recommendations":["Cách cụ thể để tăng tỉ lệ strong hire và cải thiện chất lượng nguồn UV"],"toolUsage":"Mô tả cách team đang sử dụng candidate scoring tool và mức độ hiệu quả thực tế","frictions":"Các vấn đề hoặc điểm bất thường đang thấy trong data — nêu cụ thể, không chung chung","adjustments":"Đề xuất điều chỉnh cụ thể để tăng tỉ lệ strong hire: scoring criteria, nguồn UV, quy trình"}. Highlights tối đa 4. Recommendations tối đa 3. Mọi nhận xét phải dựa trên số liệu thực tế trong data.';
 
   var payload = {
-    model:       _CS_OPENAI_MODEL,
     max_tokens:  800,
     temperature: 0.4,
     messages: [
