@@ -79,19 +79,15 @@ function _duAggregate(data) {
 
 /* ── Call OpenAI API ── */
 async function _duCallOpenAI(summary) {
+  var sysPrompt = 'Bạn là PM assistant của F.Learning Studio. Nhận vào data standup hàng ngày của team, phân tích và trả về insight bằng tiếng Việt. Trả về JSON THUẦN TÚY, không thêm gì ngoài JSON. Format: {"summary":"Tổng quan 1-2 câu về tình hình submit hôm nay","highlights":[{"type":"positive|warning|neutral","text":"Điểm đáng chú ý ngắn gọn"}],"consistencyInsight":"Nhận xét về mức độ consistent khi submit trong 7 ngày qua","taskInsight":"Nhận xét về tình hình task progress hôm nay","weeklyTrend":"Xu hướng submit tuần này so với tuần trước","recommendations":["Cách cụ thể để tăng tỉ lệ submit — thay đổi workflow, reminder, hoặc form"],"toolUsage":"Mô tả cách team đang sử dụng daily update tool và mức độ hiệu quả thực tế","frictions":"Các friction hoặc pattern đang làm giảm tỉ lệ submit — nêu cụ thể dựa trên data","adjustments":"Đề xuất điều chỉnh cụ thể để tăng submission rate: thời gian nhắc, độ dài form, quy trình"}. Nếu có member missing, đề cập nhưng không nêu tên. Highlights tối đa 4. Recommendations tối đa 3. Mọi nhận xét phải dựa trên số liệu thực tế.';
+
   var payload = {
     model:       _DU_OPENAI_MODEL,
     max_tokens:  800,
     temperature: 0.4,
     messages: [
-      {
-        role: "system",
-        content: "Ban la PM assistant cua F.Learning Studio. Nhan vao data standup hang ngay cua team, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"consistencyInsight\":\"string\",\"taskInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"],\"toolUsage\":\"string\",\"frictions\":\"string\",\"adjustments\":\"string\"}. Neu co member missing, de cap nhung khong neu ten. Highlights toi da 4. Recommendations toi da 3. toolUsage: mo ta cach team dang dung daily update tool. frictions: friction/pattern lam giam ti le submit. adjustments: de xuat thay doi de tang submission rate."
-      },
-      {
-        role: "user",
-        content: "Data standup tuan " + summary.generatedWeek + ": " + JSON.stringify(summary)
-      }
+      { role: "system", content: sysPrompt },
+      { role: "user",   content: "Data standup tuần " + summary.generatedWeek + ": " + JSON.stringify(summary).replace(/[\u0000-\u001F]/g, "") }
     ]
   };
 
