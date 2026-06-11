@@ -1,15 +1,16 @@
 /* ══════════════════════════════════════════════════════════════
-   TOOL CONFIG: Daily Update
+   TOOL CONFIG: Candidate Scoring
+   Data: Google Sheets 3 tabs (Rejected / Considerable / Strong Match)
    ══════════════════════════════════════════════════════════════ */
 
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
-/* ── OpenAI config (dùng chung key với candidate-scoring) ── */
-var _DU_OPENAI_KEY   = "sk-PASTE_YOUR_KEY_HERE";
-var _DU_OPENAI_MODEL = "gpt-5.5";
+/* ── OpenAI config ── */
+var _CS_WORKER_URL = "https://admin-dashboard.minhwuan889.workers.dev/;
+
 
 /* ── ISO week helper ── */
-function _duGetISOWeek(date) {
+function _csGetISOWeek(date) {
   var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   var day = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - day);
@@ -18,101 +19,94 @@ function _duGetISOWeek(date) {
   return d.getUTCFullYear() + "-W" + String(week).padStart(2, "0");
 }
 
-/* ── Aggregate daily-update data → summary payload ── */
-function _duAggregate(data) {
-  var week = _duGetISOWeek(new Date());
-  var subs = data._rawSubmissions || [];
+/* ── Aggregate data → summary payload (no PII) ── */
+function _csAggregate(data) {
+  var all = data.all || [];
+  var currentWeek = _csGetISOWeek(new Date());
 
-  /* Submission rate 7 ngày gần nhất */
-  var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
-  var last7 = [];
-  for (var i = 6; i >= 0; i--) {
-    var d = new Date(now); d.setDate(d.getDate() - i);
-    var ds = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-    var daySubs = subs.filter(function(s) { return s.date === ds; });
-    last7.push({ date: ds, count: daySubs.length, total: data.totalMembers });
-  }
-
-  /* Member consistency — submit bao nhiêu ngày trong 7 ngày qua */
-  var memberConsistency = {};
-  (data.memberStatuses || []).forEach(function(m) {
-    var count = subs.filter(function(s) {
-      return s.userId === m.userId && last7.some(function(d) { return d.date === s.date; });
-    }).length;
-    memberConsistency[m.name] = { submittedDays: count, outOf: 7, status: m.status };
+  /* by platform */
+  var byPlatform = {};
+  (data.platforms || []).forEach(function(p) {
+    var rows = all.filter(function(r) { return r._platform === p; });
+    byPlatform[p] = {
+      strong:   rows.filter(function(r) { return r._verdict === "strong";   }).length,
+      consider: rows.filter(function(r) { return r._verdict === "consider"; }).length,
+      rejected: rows.filter(function(r) { return r._verdict === "rejected"; }).length,
+      total:    rows.length
+    };
   });
 
-  /* Task progress distribution hôm nay */
-  var allTasks = data.allTasks || [];
-  var progressBuckets = { done: 0, high: 0, medium: 0, low: 0 };
-  allTasks.forEach(function(t) {
-    var pct = parseInt(t.progress || 0);
-    if (pct === 100)      progressBuckets.done++;
-    else if (pct >= 60)   progressBuckets.high++;
-    else if (pct >= 30)   progressBuckets.medium++;
-    else                  progressBuckets.low++;
+  /* by role */
+  var byRole = {};
+  (data.roles || []).forEach(function(role) {
+    var rows = all.filter(function(r) { return r._role === role; });
+    byRole[role] = {
+      strong:   rows.filter(function(r) { return r._verdict === "strong";   }).length,
+      consider: rows.filter(function(r) { return r._verdict === "consider"; }).length,
+      rejected: rows.filter(function(r) { return r._verdict === "rejected"; }).length,
+      total:    rows.length
+    };
   });
 
-  /* Avg submission rate 7 ngày */
-  var avgRate = last7.length > 0
-    ? Math.round(last7.reduce(function(acc, d) {
-        return acc + (d.total > 0 ? d.count / d.total * 100 : 0);
-      }, 0) / last7.length)
-    : 0;
+  /* by week (last 8 weeks) */
+  var weekMap = {};
+  all.forEach(function(r) {
+    if (!r._dateStr) return;
+    var w = _csGetISOWeek(new Date(r._dateStr));
+    if (!weekMap[w]) weekMap[w] = { strong: 0, consider: 0, rejected: 0, total: 0 };
+    weekMap[w][r._verdict]++;
+    weekMap[w].total++;
+  });
+  var byWeek = {};
+  Object.keys(weekMap).sort().slice(-8).forEach(function(w) { byWeek[w] = weekMap[w]; });
 
   return {
-    generatedWeek:   week,
-    today: {
-      submissionRate:  data.submissionRate,
-      submittedCount:  data.submittedCount,
-      missingCount:    data.missingCount,
-      totalMembers:    data.totalMembers,
-      totalTasks:      allTasks.length,
-      progressBuckets: progressBuckets
-    },
-    last7Days:           last7,
-    avgRateLast7:        avgRate,
-    memberConsistency:   memberConsistency,
-    missingMembers:      (data.memberStatuses || []).filter(function(m) { return m.status === "missing"; }).map(function(m) { return m.name; })
+    generatedWeek: currentWeek,
+    total:         data.totalAll,
+    strong:        data.totalStrong,
+    consider:      data.totalConsider,
+    rejected:      data.totalRejected,
+    strongRate:    data.totalAll > 0 ? Math.round(data.totalStrong / data.totalAll * 100) : 0,
+    byPlatform:    byPlatform,
+    byRole:        byRole,
+    byWeek:        byWeek
   };
 }
 
 /* ── Call OpenAI API ── */
-async function _duCallOpenAI(summary) {
-  var sysPrompt = 'Bạn là PM assistant của F.Learning Studio. Nhận vào data standup hàng ngày của team, phân tích và trả về insight bằng tiếng Việt. Trả về JSON THUẦN TÚY, không thêm gì ngoài JSON. Format: {"summary":"Tổng quan 1-2 câu về tình hình submit hôm nay","highlights":[{"type":"positive|warning|neutral","text":"Điểm đáng chú ý ngắn gọn"}],"consistencyInsight":"Nhận xét về mức độ consistent khi submit trong 7 ngày qua","taskInsight":"Nhận xét về tình hình task progress hôm nay","weeklyTrend":"Xu hướng submit tuần này so với tuần trước","recommendations":["Cách cụ thể để tăng tỉ lệ submit — thay đổi workflow, reminder, hoặc form"],"toolUsage":"Mô tả cách team đang sử dụng daily update tool và mức độ hiệu quả thực tế","frictions":"Các friction hoặc pattern đang làm giảm tỉ lệ submit — nêu cụ thể dựa trên data","adjustments":"Đề xuất điều chỉnh cụ thể để tăng submission rate: thời gian nhắc, độ dài form, quy trình"}. Nếu có member missing, đề cập nhưng không nêu tên. Highlights tối đa 4. Recommendations tối đa 3. Mọi nhận xét phải dựa trên số liệu thực tế.';
+async function _csCallOpenAI(summary) {
+  var sysPrompt = 'Bạn là talent analyst của F.Learning Studio — công ty thiết kế e-learning tại Việt Nam. Nhận vào aggregated data tuyển dụng (không có thông tin cá nhân), phân tích và trả về insight bằng tiếng Việt. Trả về JSON THUẦN TÚY, không thêm gì ngoài JSON. Format: {"summary":"Tổng quan 1-2 câu về tình hình tuyển dụng tuần này","highlights":[{"type":"positive|warning|neutral","text":"Điểm đáng chú ý ngắn gọn"}],"platformInsight":"Nhận xét về platform nào đang hiệu quả nhất hoặc kém nhất","roleInsight":"Nhận xét về vị trí nào đang khan hiếm ứng viên qualified","weeklyTrend":"Xu hướng so với tuần trước (tăng/giảm/ổn định)","recommendations":["Cách cụ thể để tăng tỉ lệ strong hire và cải thiện chất lượng nguồn UV"],"toolUsage":"Mô tả cách team đang sử dụng candidate scoring tool và mức độ hiệu quả thực tế","frictions":"Các vấn đề hoặc điểm bất thường đang thấy trong data — nêu cụ thể, không chung chung","adjustments":"Đề xuất điều chỉnh cụ thể để tăng tỉ lệ strong hire: scoring criteria, nguồn UV, quy trình"}. Highlights tối đa 4. Recommendations tối đa 3. Mọi nhận xét phải dựa trên số liệu thực tế trong data.';
 
   var payload = {
-    model:       _DU_OPENAI_MODEL,
+    model:       _CS_OPENAI_MODEL,
     max_tokens:  800,
     temperature: 0.4,
     messages: [
       { role: "system", content: sysPrompt },
-      { role: "user",   content: "Data standup tuần " + summary.generatedWeek + ": " + JSON.stringify(summary).replace(/[\u0000-\u001F]/g, "") }
+      { role: "user",   content: "Data tuyển dụng tuần " + summary.generatedWeek + ": " + JSON.stringify(summary).replace(/[\u0000-\u001F]/g, "") }
     ]
   };
 
-  var res = await fetch("https://api.openai.com/v1/chat/completions", {
+  var res = await fetch(_CS_WORKER_URL + "/ai-insight", {
     method: "POST",
-    headers: {
-      "Content-Type":  "application/json",
-      "Authorization": "Bearer " + (localStorage.getItem("fl_openai_key") || _DU_OPENAI_KEY)
-    },
-    body: JSON.stringify(payload)
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: payload.messages })
   });
 
-  if (!res.ok) throw new Error("OpenAI HTTP " + res.status);
+  if (!res.ok) throw new Error("Worker HTTP " + res.status);
   var json = await res.json();
-  var raw = json.choices[0].message.content.trim()
-    .replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+  var raw = json.choices[0].message.content.trim();
+  raw = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
   return JSON.parse(raw);
 }
 
-function _duCacheKey() {
-  return "du_insight_" + _duGetISOWeek(new Date());
+/* ── localStorage cache key ── */
+function _csCacheKey() {
+  return "cs_insight_" + _csGetISOWeek(new Date());
 }
 
-/* ── Render insight panel HTML ── */
-function _duRenderInsightHTML(insight, week, isCache) {
+/* ── Render insight panel HTML từ parsed insight object ── */
+function _csRenderInsightHTML(insight, week, isCache) {
   var typeIcon  = { positive: "ti-trending-up", warning: "ti-alert-triangle", neutral: "ti-info-circle" };
   var typeColor = { positive: "var(--green)", warning: "var(--accent)", neutral: "var(--blue)" };
   var typeBg    = { positive: "var(--green-dim)", warning: "var(--accent-dim)", neutral: "var(--blue-dim)" };
@@ -135,53 +129,71 @@ function _duRenderInsightHTML(insight, week, isCache) {
   }).join("");
 
   var cacheNote = isCache
-    ? '<span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">Cache ' + week + ' · <button id="du-insight-regen" style="background:none;border:none;color:var(--accent);font-size:10px;font-family:var(--font-mono);cursor:pointer;padding:0">↻ Regenerate</button></span>'
+    ? '<span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">Cache ' + week + ' · <button id="cs-insight-regen" style="background:none;border:none;color:var(--accent);font-size:10px;font-family:var(--font-mono);cursor:pointer;padding:0">↻ Regenerate</button></span>'
     : '<span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">Generated ' + week + '</span>';
 
   return '<div style="display:flex;flex-direction:column;gap:0;height:100%">' +
+    /* header */
     '<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 20px 16px;border-bottom:1px solid var(--border);flex-shrink:0">' +
       '<div style="display:flex;align-items:center;gap:10px">' +
-        '<div style="width:32px;height:32px;border-radius:var(--radius-sm);background:var(--accent-dim);display:flex;align-items:center;justify-content:center;color:var(--accent)"><i class="ti ti-sparkles" style="font-size:16px"></i></div>' +
-        '<div><p style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">AI Insight</p>' + cacheNote + '</div>' +
+        '<div style="width:32px;height:32px;border-radius:var(--radius-sm);background:var(--accent-dim);display:flex;align-items:center;justify-content:center;color:var(--accent)">' +
+          '<i class="ti ti-sparkles" style="font-size:16px"></i>' +
+        '</div>' +
+        '<div>' +
+          '<p style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">AI Insight</p>' +
+          cacheNote +
+        '</div>' +
       '</div>' +
-      '<button id="du-insight-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
+      '<button id="cs-insight-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center">' +
+        '<i class="ti ti-x"></i>' +
+      '</button>' +
     '</div>' +
+
+    /* scrollable body */
     '<div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">' +
+
+      /* summary */
       '<div>' +
         '<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:8px">Tổng quan</p>' +
         '<p style="font-size:14px;color:var(--text-primary);line-height:1.65;background:var(--bg-hover);padding:12px 14px;border-radius:var(--radius-sm)">' + insight.summary + '</p>' +
       '</div>' +
+
+      /* highlights */
       (highlightRows ? '<div><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:8px">Điểm đáng chú ý</p>' + highlightRows + '</div>' : '') +
+
+      /* platform + role insights */
       '<div style="display:flex;flex-direction:column;gap:8px">' +
-        '<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted)">Phân tích</p>' +
+        '<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:0">Phân tích</p>' +
         '<div style="padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm)">' +
-          '<p style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Consistency</p>' +
-          '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + insight.consistencyInsight + '</p>' +
+          '<p style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Nền tảng</p>' +
+          '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + insight.platformInsight + '</p>' +
         '</div>' +
         '<div style="padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm)">' +
-          '<p style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Task Progress</p>' +
-          '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + insight.taskInsight + '</p>' +
+          '<p style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Vị trí</p>' +
+          '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + insight.roleInsight + '</p>' +
         '</div>' +
         '<div style="padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm)">' +
           '<p style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Xu hướng tuần</p>' +
           '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + insight.weeklyTrend + '</p>' +
         '</div>' +
       '</div>' +
+
+      /* recommendations */
       (recRows ? '<div><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:10px">Khuyến nghị</p>' + recRows + '</div>' : '') +
 
       /* 3 questions section */
       '<div style="border-top:1px solid var(--border);padding-top:20px;display:flex;flex-direction:column;gap:12px">' +
         '<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted)">Đánh giá tool</p>' +
-        _duQABlock("ti-tool", "Tool đang được dùng như thế nào?", insight.toolUsage) +
-        _duQABlock("ti-alert-triangle", "Problem / friction nào đang thấy trong data?", insight.frictions) +
-        _duQABlock("ti-adjustments", "Cần điều chỉnh gì?", insight.adjustments) +
+        _csQABlock("ti-tool", "Tool đang được dùng như thế nào?", insight.toolUsage) +
+        _csQABlock("ti-alert-triangle", "Problem / friction nào đang thấy trong data?", insight.frictions) +
+        _csQABlock("ti-adjustments", "Cần điều chỉnh gì?", insight.adjustments) +
       '</div>' +
 
-    '</div>' +
+    '</div>' + /* end scrollable */
   '</div>';
 }
 
-function _duQABlock(icon, question, answer) {
+function _csQABlock(icon, question, answer) {
   return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden">' +
     '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg-hover);border-bottom:1px solid var(--border)">' +
       '<i class="ti ' + icon + '" style="font-size:13px;color:var(--accent)"></i>' +
@@ -191,50 +203,57 @@ function _duQABlock(icon, question, answer) {
   '</div>';
 }
 
-function _duInsightLoadingHTML() {
+/* ── Loading skeleton HTML ── */
+function _csInsightLoadingHTML() {
   return '<div style="display:flex;flex-direction:column;gap:0;height:100%">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 20px 16px;border-bottom:1px solid var(--border);flex-shrink:0">' +
       '<div style="display:flex;align-items:center;gap:10px">' +
         '<div style="width:32px;height:32px;border-radius:var(--radius-sm);background:var(--accent-dim);display:flex;align-items:center;justify-content:center;color:var(--accent)"><i class="ti ti-sparkles" style="font-size:16px"></i></div>' +
         '<div><p style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">AI Insight</p><span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">Đang phân tích...</span></div>' +
       '</div>' +
-      '<button id="du-insight-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
+      '<button id="cs-insight-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
     '</div>' +
     '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:40px">' +
       '<div style="width:36px;height:36px;border:2px solid var(--border-strong);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div>' +
-      '<p style="font-size:14px;color:var(--text-primary)">Đang gọi AI...</p>' +
+      '<div style="text-align:center">' +
+        '<p style="font-size:14px;color:var(--text-primary);margin-bottom:4px">Đang gọi AI...</p>' +
+        '<p style="font-size:12px;color:var(--text-muted)">Phân tích ' + (window._csAll||[]).length + ' ứng viên</p>' +
+      '</div>' +
     '</div>' +
   '</div>';
 }
 
-function _duInsightErrorHTML(msg) {
+/* ── Error HTML ── */
+function _csInsightErrorHTML(msg) {
   return '<div style="display:flex;flex-direction:column;gap:0;height:100%">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 20px 16px;border-bottom:1px solid var(--border);flex-shrink:0">' +
       '<div style="display:flex;align-items:center;gap:10px">' +
         '<div style="width:32px;height:32px;border-radius:var(--radius-sm);background:var(--red-dim);display:flex;align-items:center;justify-content:center;color:var(--red)"><i class="ti ti-alert-circle" style="font-size:16px"></i></div>' +
         '<p style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">AI Insight</p>' +
       '</div>' +
-      '<button id="du-insight-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
+      '<button id="cs-insight-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
     '</div>' +
     '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:40px;text-align:center">' +
       '<i class="ti ti-wifi-off" style="font-size:36px;color:var(--text-muted)"></i>' +
       '<p style="font-size:14px;color:var(--text-primary)">Không thể tạo insight</p>' +
       '<p style="font-size:12px;color:var(--text-muted)">' + msg + '</p>' +
-      '<button id="du-insight-retry" style="margin-top:8px;padding:8px 18px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--radius-sm);color:var(--accent);font-size:13px;cursor:pointer">↻ Thử lại</button>' +
+      '<button id="cs-insight-retry" style="margin-top:8px;padding:8px 18px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--radius-sm);color:var(--accent);font-size:13px;cursor:pointer">↻ Thử lại</button>' +
     '</div>' +
   '</div>';
 }
 
-async function _duOpenInsightPanel(data, forceRegen) {
-  var panel   = document.getElementById("du-insight-panel");
-  var overlay = document.getElementById("du-insight-overlay");
+/* ── Open / populate side panel ── */
+async function _csOpenInsightPanel(data, forceRegen) {
+  var panel   = document.getElementById("cs-insight-panel");
+  var overlay = document.getElementById("cs-insight-overlay");
   if (!panel) return;
 
+  /* open */
   overlay.style.display = "block";
   panel.classList.add("open");
 
-  var week     = _duGetISOWeek(new Date());
-  var cacheKey = _duCacheKey();
+  var week     = _csGetISOWeek(new Date());
+  var cacheKey = _csCacheKey();
   var cached   = null;
 
   if (!forceRegen) {
@@ -242,39 +261,42 @@ async function _duOpenInsightPanel(data, forceRegen) {
   }
 
   if (cached) {
-    panel.innerHTML = _duRenderInsightHTML(cached, week, true);
-    _duBindPanelEvents(data, panel, overlay);
+    panel.innerHTML = _csRenderInsightHTML(cached, week, true);
+    _csBindPanelEvents(data, panel, overlay);
     return;
   }
 
-  panel.innerHTML = _duInsightLoadingHTML();
-  _duBindCloseEvent(panel, overlay);
+  /* loading */
+  panel.innerHTML = _csInsightLoadingHTML();
+  _csBindCloseEvent(panel, overlay);
 
   try {
-    var summary = _duAggregate(data);
-    var insight = await _duCallOpenAI(summary);
+    var summary = _csAggregate(data);
+    var insight = await _csCallOpenAI(summary);
     localStorage.setItem(cacheKey, JSON.stringify(insight));
-    panel.innerHTML = _duRenderInsightHTML(insight, week, false);
-    _duBindPanelEvents(data, panel, overlay);
+    panel.innerHTML = _csRenderInsightHTML(insight, week, false);
+    _csBindPanelEvents(data, panel, overlay);
   } catch(err) {
-    panel.innerHTML = _duInsightErrorHTML(err.message);
-    _duBindCloseEvent(panel, overlay);
-    var retryBtn = document.getElementById("du-insight-retry");
-    if (retryBtn) retryBtn.addEventListener("click", function() { _duOpenInsightPanel(data, true); });
+    panel.innerHTML = _csInsightErrorHTML(err.message);
+    _csBindCloseEvent(panel, overlay);
+    var retryBtn = document.getElementById("cs-insight-retry");
+    if (retryBtn) retryBtn.addEventListener("click", function() { _csOpenInsightPanel(data, true); });
   }
 }
 
-function _duBindCloseEvent(panel, overlay) {
-  var closeBtn = document.getElementById("du-insight-close");
-  if (closeBtn) closeBtn.addEventListener("click", function() { _duClosePanel(panel, overlay); });
-  overlay.onclick = function() { _duClosePanel(panel, overlay); };
+function _csBindCloseEvent(panel, overlay) {
+  var closeBtn = document.getElementById("cs-insight-close");
+  if (closeBtn) closeBtn.addEventListener("click", function() { _csClosePanel(panel, overlay); });
+  overlay.addEventListener("click", function() { _csClosePanel(panel, overlay); });
 }
-function _duBindPanelEvents(data, panel, overlay) {
-  _duBindCloseEvent(panel, overlay);
-  var regenBtn = document.getElementById("du-insight-regen");
-  if (regenBtn) regenBtn.addEventListener("click", function() { _duOpenInsightPanel(data, true); });
+
+function _csBindPanelEvents(data, panel, overlay) {
+  _csBindCloseEvent(panel, overlay);
+  var regenBtn = document.getElementById("cs-insight-regen");
+  if (regenBtn) regenBtn.addEventListener("click", function() { _csOpenInsightPanel(data, true); });
 }
-function _duClosePanel(panel, overlay) {
+
+function _csClosePanel(panel, overlay) {
   panel.classList.remove("open");
   overlay.style.display = "none";
 }
@@ -282,480 +304,490 @@ function _duClosePanel(panel, overlay) {
 /* ══════════════════════════════════════════════════════════════ */
 
 window.TOOL_REGISTRY.push({
-  id:          "daily-update",
-  name:        "Daily Task Update Process PM",
-  description: "Tracking ti le submit standup hang ngay cua team.",
-  icon:        "ti-square-check",
+  id:          "candidate-scoring",
+  name:        "Candidate Scoring",
+  description: "Tracking ung vien cham diem tu dong qua n8n, phan loai theo nen tang va vi tri.",
+  icon:        "ti-user-check",
   status:      "active",
 
-  _urls: {
-    dailyTasks:   "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/daily-tasks.json",
-    responses:    "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/responses.json",
-    members:      "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/members.json",
-    submissions:  "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/tracking/daily-update-submissions.json",
-    snapshotBase: "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/tracking/snapshots/responses-"
+  _sheetId:    "19YTdoUKx_MtflEcz7pyNxAfmvf-MEROsleODroj7fiw",
+  _sheetNames: { rejected: "Rejected", consider: "Considerable", strong: "Strong Match" },
+
+  _platformColors: {
+    "Linkedin": "#0A66C2", "LinkedIn": "#0A66C2",
+    "TopCV":    "#E84141",
+    "Glints":   "#0BD0A1",
+    "Email":    "#6B7280",
+    "Unknown":  "#94A3B8"
   },
 
+  /* ══════════════ FETCH ══════════════ */
   fetchData: async function(utils) {
-    var urls = this._urls;
-    var results = await Promise.all([
-      utils.fetchJson(urls.dailyTasks,  true),
-      utils.fetchJson(urls.responses,   true),
-      utils.fetchJson(urls.members,     true),
-      utils.fetchJson(urls.submissions, true).catch(function() { return []; }),
-      fetch("https://api.github.com/repos/minhwuan1234/daily-update-task-process-pm/commits?path=responses.json&per_page=1")
-        .then(function(r) { return r.json(); })
-        .then(function(d) { return (d && d[0]) ? d[0].commit.committer.date : null; })
-        .catch(function() { return null; })
+    var self    = this;
+    var sheetId = this._sheetId;
+    var names   = this._sheetNames;
+
+    function splitCSVLine(line) {
+      var res=[],cur="",inQ=false;
+      for (var i=0;i<line.length;i++){
+        var c=line[i];
+        if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+        else if(c===','&&!inQ){res.push(cur);cur="";}
+        else cur+=c;
+      }
+      res.push(cur);return res;
+    }
+    function parseCSV(text){
+      var lines=text.split("\n").filter(function(l){return l.trim();});
+      if(lines.length<2)return[];
+      var hdrs=splitCSVLine(lines[0]);
+      return lines.slice(1).map(function(line){
+        var vals=splitCSVLine(line),obj={};
+        hdrs.forEach(function(h,i){obj[h.trim()]=(vals[i]||"").trim();});
+        return obj;
+      }).filter(function(r){return r["Timestamp"]&&r["Name"];});
+    }
+    async function fetchSheet(tab){
+      var url="https://docs.google.com/spreadsheets/d/"+sheetId+
+              "/gviz/tq?tqx=out:csv&sheet="+encodeURIComponent(tab)+"&t="+Date.now();
+      var res=await fetch(url);
+      if(!res.ok)throw new Error("HTTP "+res.status);
+      return parseCSV(await res.text());
+    }
+    function toDateStr(ts){
+      var m=(ts||"").match(/^(\d{4}-\d{2}-\d{2})/);return m?m[1]:null;
+    }
+
+    var results=await Promise.all([
+      fetchSheet(names.rejected).catch(function(){return[];}),
+      fetchSheet(names.consider).catch(function(){return[];}),
+      fetchSheet(names.strong).catch(function(){return[];})
     ]);
-    var data = this._process(results[0], results[1], results[2], results[3], utils);
-    data._lastUpdated = results[4];
-    return data;
-  },
+    results[0].forEach(function(r){r._verdict="rejected";});
+    results[1].forEach(function(r){r._verdict="consider";});
+    results[2].forEach(function(r){r._verdict="strong";});
 
-  _process: function(daily, responses, members, submissions, utils) {
-    var idToName = {};
-    Object.entries(members || {}).forEach(function(e) { idToName[e[1]] = e[0]; });
+    var all=results[0].concat(results[1]).concat(results[2]).map(function(r){
+      r._dateStr =toDateStr(r["Timestamp"]);
+      r._platform=(r["Apply Through"]||"Unknown").trim();
+      r._role    =(r["Role"]||r["Position"]||"Unknown").trim();
+      return r;
+    }).filter(function(r){return r._dateStr;});
 
-    var responseList = Array.isArray(responses) ? responses : (responses.responses || []);
-    responseList = responseList.filter(function(r) { return r.userId && r.userId.startsWith("ou_"); });
+    all.sort(function(a,b){return a._dateStr.localeCompare(b._dateStr);});
 
-    var cleanSubs = Array.isArray(submissions)
-      ? submissions.filter(function(s) { return s.userId && s.userId.startsWith("ou_"); })
-      : [];
-    var activeIds = new Set(cleanSubs.map(function(s) { return s.userId; }));
+    var platformSet={},roleSet={};
+    all.forEach(function(r){platformSet[r._platform]=true;roleSet[r._role]=true;});
+    var platforms=Object.keys(platformSet).sort();
+    var roles    =Object.keys(roleSet).sort();
 
-    if (activeIds.size === 0) {
-      var taskNames = new Set((daily.members || []).map(function(m) { return m.member; }));
-      Object.entries(members || {}).forEach(function(e) { if (taskNames.has(e[0])) activeIds.add(e[1]); });
-    }
-
-    var activeMembers = Object.entries(members || {}).filter(function(e) { return activeIds.has(e[1]); });
-    var totalMembers  = activeMembers.length;
-
-    var submittedIds   = new Set(responseList.map(function(r) { return r.userId; }));
-    var submittedCount = submittedIds.size;
-    var missingCount   = Math.max(totalMembers - submittedCount, 0);
-    var submissionRate = totalMembers > 0 ? Math.round(submittedCount / totalMembers * 100) : 0;
-
-    var memberStatuses = activeMembers.map(function(e) {
-      var name = e[0], id = e[1];
-      var sub = responseList.find(function(r) { return r.userId === id; });
-      return {
-        name: name, userId: id,
-        status:      sub ? "submitted" : "missing",
-        submittedAt: sub ? sub.submittedAt : null,
-        tasks:       sub ? (sub.tasks || []) : [],
-        message:     sub ? (sub.message || "") : ""
-      };
+    var fallback=["#818cf8","#fb923c","#2dd4bf","#f472b6","#a3e635"];
+    var pColors={};var fi=0;
+    platforms.forEach(function(p){
+      pColors[p]=self._platformColors[p]||fallback[fi++%fallback.length];
     });
 
-    var allTasks = responseList.flatMap(function(r) {
-      return (r.tasks || []).map(function(t) {
-        return Object.assign({}, t, { memberName: idToName[r.userId] || r.userId });
-      });
-    });
-
-    var chartDays = [];
-    var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
-    for (var i = 6; i >= 0; i--) {
-      var d = new Date(now);
-      d.setDate(d.getDate() - i);
-      var dateStr = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-      var label   = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
-      var daySubs = cleanSubs.filter(function(s) { return s.date === dateStr; });
-      var names   = daySubs.map(function(s) { return s.memberName || s.userId; }).filter(function(n) { return n !== "Unknown"; });
-      chartDays.push({ dateStr: dateStr, label: label, count: names.length, total: totalMembers, names: names });
-    }
-
-    var dailyMembers = daily.members || [];
-    return { totalMembers: totalMembers, submittedCount: submittedCount, missingCount: missingCount, submissionRate: submissionRate, memberStatuses: memberStatuses, allTasks: allTasks, chartDays: chartDays, _rawSubmissions: cleanSubs, dailyMembers: dailyMembers, dailyDate: daily.date || "", _members: members, responseList: responseList };
+    return {
+      all:all,
+      totalAll:      all.length,
+      totalRejected: results[0].length,
+      totalConsider: results[1].length,
+      totalStrong:   results[2].length,
+      platforms:platforms,
+      roles:roles,
+      pColors:pColors
+    };
   },
 
-  renderCard: function(data) {
-    var rate = data.submissionRate;
-    var rateColor = rate >= 80 ? "green" : rate >= 50 ? "amber" : "red";
-    var barColor  = rate >= 80 ? "" : rate >= 50 ? "amber" : "red";
-    var versionTag = data._lastUpdated
-      ? '<div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:8px">' +
-          new Date(data._lastUpdated).toLocaleString("vi-VN", {timeZone:"Asia/Ho_Chi_Minh"}) +
-        '</div>'
-      : '';
-    return versionTag + '<div class="tool-metrics">' +
-      '<div class="tool-metric"><span class="metric-value ' + rateColor + '">' + rate + '%</span><span class="metric-label">Ti le submit</span></div>' +
-      '<div class="tool-metric"><span class="metric-value green">' + data.submittedCount + '/' + data.totalMembers + '</span><span class="metric-label">Da submit</span></div>' +
-      '<div class="tool-metric"><span class="metric-value ' + (data.missingCount === 0 ? "green" : "red") + '">' + data.missingCount + '</span><span class="metric-label">Chua submit</span></div>' +
-      '</div>' +
-      '<div class="mini-bar-wrap"><div class="mini-bar"><div class="mini-bar-fill ' + barColor + '" style="width:' + rate + '%"></div></div>' +
-      '<span class="mini-bar-pct">' + rate + '%</span></div>';
+  /* ══════════════ CARD ══════════════ */
+  renderCard: function(data){
+    var total=data.totalAll,sc=data.totalStrong,co=data.totalConsider,re=data.totalRejected;
+    var sRate=total>0?Math.round(sc/total*100):0;
+    var sColor=sRate>=30?"green":sRate>=15?"amber":"red";
+    return '<div class="tool-metrics">'+
+      '<div class="tool-metric"><span class="metric-value">'+total+'</span><span class="metric-label">Tong UV</span></div>'+
+      '<div class="tool-metric"><span class="metric-value green">'+sc+'</span><span class="metric-label">💚 Strong</span></div>'+
+      '<div class="tool-metric"><span class="metric-value amber">'+co+'</span><span class="metric-label">🟡 Consider</span></div>'+
+      '<div class="tool-metric"><span class="metric-value red">'+re+'</span><span class="metric-label">❌ Rejected</span></div>'+
+      '</div>'+
+      '<div class="mini-bar-wrap" style="margin-top:10px">'+
+        '<span style="font-size:10px;color:var(--text-muted);width:52px">Strong</span>'+
+        '<div class="mini-bar"><div class="mini-bar-fill" style="width:'+sRate+'%"></div></div>'+
+        '<span class="mini-bar-pct '+sColor+'">'+sRate+'%</span>'+
+      '</div>';
   },
 
-  renderDetail: function(data, utils) {
-    if (!data || data._error) return '<div class="state-error"><i class="ti ti-alert-circle"></i> Khong the tai data</div>';
-    if (data._loading) return '<div class="state-loading"><div class="spinner"></div><p>Dang tai...</p></div>';
+  /* ══════════════ DETAIL ══════════════ */
+  renderDetail: function(data,utils){
+    if(!data||data._error)return'<div class="state-error"><i class="ti ti-alert-circle"></i> Khong the tai data</div>';
+    if(data._loading)return'<div class="state-loading"><div class="spinner"></div><p>Dang tai...</p></div>';
 
-    var tabBar =
-      '<div class="tab-bar">' +
-        '<button class="tab-btn active" data-tab="tracking"><i class="ti ti-chart-bar"></i> Tracking</button>' +
-        '<button class="tab-btn" data-tab="taskinfo"><i class="ti ti-list-check"></i> Thong tin task</button>' +
-      '</div>' +
-      '<div id="tab-tracking" class="tab-pane active"></div>' +
-      '<div id="tab-taskinfo" class="tab-pane" style="display:none"></div>' +
-      /* Insight panel + overlay + FAB */
-      '<div id="du-insight-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:199;backdrop-filter:blur(2px)"></div>' +
-      '<div id="du-insight-panel" class="cs-insight-panel"></div>' +
-      '<button id="du-insight-fab" class="cs-insight-fab" title="Xem AI Insight">' +
-        '<i class="ti ti-sparkles"></i><span>Insight</span>' +
+    var tabBar=
+      '<div class="tab-bar">'+
+        '<button class="tab-btn active" data-tab="tracking"><i class="ti ti-chart-bar"></i> Tracking</button>'+
+        '<button class="tab-btn" data-tab="info"><i class="ti ti-info-circle"></i> Thong tin tool</button>'+
+      '</div>'+
+      '<div id="tab-tracking" class="tab-pane"></div>'+
+      '<div id="tab-info"     class="tab-pane" style="display:none"></div>'+
+      /* Insight side panel + overlay — inject once vào DOM */
+      '<div id="cs-insight-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:199;backdrop-filter:blur(2px)"></div>'+
+      '<div id="cs-insight-panel" class="cs-insight-panel"></div>'+
+      /* Floating insight button */
+      '<button id="cs-insight-fab" class="cs-insight-fab" title="Xem AI Insight">'+
+        '<i class="ti ti-sparkles"></i>'+
+        '<span>Insight</span>'+
       '</button>';
 
-    var rate = data.submissionRate;
-    var rateColor = rate >= 80 ? "green" : rate >= 50 ? "amber" : "red";
-
-    var statsHTML =
-      '<div class="detail-stats">' +
-      '<div class="stat-card"><span class="stat-label">Ti le submit</span><span class="stat-value ' + rateColor + '">' + rate + '%</span></div>' +
-      '<div class="stat-card"><span class="stat-label">Da submit</span><span class="stat-value green">' + data.submittedCount + '</span><span class="stat-delta">/ ' + data.totalMembers + ' members</span></div>' +
-      '<div class="stat-card"><span class="stat-label">Chua submit</span><span class="stat-value ' + (data.missingCount === 0 ? "green" : "red") + '">' + data.missingCount + '</span></div>' +
-      '<div class="stat-card"><span class="stat-label">Tong tasks</span><span class="stat-value">' + data.allTasks.length + '</span></div>' +
+    /* Stats */
+    var total=data.totalAll,sc=data.totalStrong,co=data.totalConsider,re=data.totalRejected;
+    var sRate=total>0?Math.round(sc/total*100):0;
+    var cRate=total>0?Math.round(co/total*100):0;
+    var statsHTML=
+      '<div class="detail-stats">'+
+        '<div class="stat-card"><span class="stat-label">Tong ung vien</span><span class="stat-value">'+total+'</span><span class="stat-delta"><i class="ti ti-users"></i> Da cham diem</span></div>'+
+        '<div class="stat-card"><span class="stat-label">💚 Strong hire</span><span class="stat-value green">'+sc+'</span><span class="stat-delta">'+sRate+'% tong so</span></div>'+
+        '<div class="stat-card"><span class="stat-label">🟡 Consider</span><span class="stat-value amber">'+co+'</span><span class="stat-delta">'+cRate+'% tong so</span></div>'+
+        '<div class="stat-card"><span class="stat-label">❌ Rejected</span><span class="stat-value red">'+re+'</span><span class="stat-delta">'+(100-sRate-cRate)+'% tong so</span></div>'+
       '</div>';
 
-    window._duSubs         = data._rawSubmissions || [];
-    window._duTotal        = data.totalMembers;
-    window._duResponseList = data.responseList || [];
-    window._duMemberStatuses = data.memberStatuses || [];
-    window._duData         = data; /* store for insight panel */
+    /* Globals */
+    window._csAll     =data.all     ||[];
+    window._csPlatforms=data.platforms||[];
+    window._csPColors  =data.pColors  ||{};
 
-    window._buildDUChart = function(n) {
-      var container = document.getElementById("chart-container");
-      if (!container) return;
+    /* ══ CHART ══ */
+    window._buildCSChart=function(){
+      var wrap=document.getElementById("cs-chart-outer");
+      if(!wrap)return;
 
-      var groupByWeek = n >= 90;
-      var now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
-      var buckets = [];
+      var all      =window._csAll;
+      var platforms=window._csPlatforms;
+      var pColors  =window._csPColors;
 
-      if (!groupByWeek) {
-        for (var i = n - 1; i >= 0; i--) {
-          var d   = new Date(now); d.setDate(d.getDate() - i);
-          var ds  = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-          var lbl = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
-          var subs  = window._duSubs.filter(function(s) { return s.date === ds; });
-          var names = subs.map(function(s) { return s.memberName||s.userId; }).filter(function(x) { return x !== "Unknown"; });
-          buckets.push({ lbl: lbl, tooltip: ds, dateStr: ds, count: names.length, names: names, days: 1 });
-        }
-      } else {
-        var totalWeeks = Math.ceil(n / 7);
-        for (var w = totalWeeks - 1; w >= 0; w--) {
-          var weekStart = new Date(now); weekStart.setDate(weekStart.getDate() - w * 7 - 6);
-          var weekEnd   = new Date(now); weekEnd.setDate(weekEnd.getDate() - w * 7);
-          var lblS = String(weekStart.getDate()).padStart(2,"0") + "/" + String(weekStart.getMonth()+1).padStart(2,"0");
-          var lblE = String(weekEnd.getDate()).padStart(2,"0")   + "/" + String(weekEnd.getMonth()+1).padStart(2,"0");
-          var allNames = []; var submittedDays = 0;
-          for (var day = 0; day < 7; day++) {
-            var dd  = new Date(weekStart); dd.setDate(dd.getDate() + day);
-            var dds = dd.getFullYear() + "-" + String(dd.getMonth()+1).padStart(2,"0") + "-" + String(dd.getDate()).padStart(2,"0");
-            var ds2 = window._duSubs.filter(function(s) { return s.date === dds; });
-            if (ds2.length > 0) submittedDays++;
-            ds2.forEach(function(s) {
-              var nm = s.memberName || s.userId;
-              if (nm !== "Unknown" && allNames.indexOf(nm) === -1) allNames.push(nm);
-            });
-          }
-          buckets.push({ lbl: lblS + "-" + lblE, tooltip: lblS + " ~ " + lblE, count: submittedDays, names: allNames, days: 7 });
-        }
-      }
-
-      var max     = groupByWeek ? 5 : Math.max(window._duTotal, 1);
-      var hasData = buckets.some(function(b) { return b.count > 0; });
-
-      if (!hasData) {
-        container.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:var(--text-muted)"><i class="ti ti-chart-bar-off" style="font-size:28px"></i><span style="font-size:13px">Chua co du lieu trong khoang thoi gian nay</span></div>';
+      if(!all.length){
+        wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:220px;gap:8px;color:var(--text-muted)">'+
+          '<i class="ti ti-chart-bar-off" style="font-size:32px"></i>'+
+          '<span style="font-size:13px">Chua co du lieu</span></div>';
         return;
       }
 
-      container.innerHTML = buckets.map(function(b) {
-        var pct = groupByWeek ? Math.round(b.count / max * 100) : Math.round(b.count / Math.max(window._duTotal, 1) * 100);
-        var bc  = pct >= 80 ? "var(--green)" : pct >= 50 ? "var(--accent)" : pct > 0 ? "var(--yellow)" : "var(--bg-hover)";
-        var nl  = b.names.length > 0 ? b.names.join(", ") : "Chua co du lieu";
-        var tooltipBody = groupByWeek
-          ? b.count + " ngay co submission<br><span style=\"color:var(--text-secondary);font-size:11px\">" + nl + "</span>"
-          : b.count + "/" + window._duTotal + " nguoi submit<br><span style=\"color:var(--text-secondary);font-size:11px\">" + nl + "</span>";
-        var clickable = b.count > 0 && !groupByWeek ? "chart-col--clickable" : "";
-        var tipHtml = '<strong>' + b.tooltip + '</strong><br>' + tooltipBody + (b.count > 0 && !groupByWeek ? '<br><span style="color:var(--accent);font-size:10px">↓ Click de xem chi tiet</span>' : '');
-        return '<div class="chart-col ' + clickable + '" data-date="' + b.dateStr + '" data-has-data="' + (b.count > 0 ? "1" : "0") + '" data-tip="' + tipHtml.replace(/"/g, "&quot;") + '">' +
-          '<div class="chart-bar-wrap"><div class="chart-bar" style="height:' + Math.max(pct, 4) + '%;background:' + bc + '"></div></div>' +
-          '<div class="chart-label" style="font-size:' + (groupByWeek ? "9px" : "11px") + '">' + b.lbl + '</div>' +
-          '<div class="chart-count">' + b.count + '</div>' +
+      var ptData=platforms.map(function(p){
+        var rows=all.filter(function(r){return r._platform===p;});
+        var s=rows.filter(function(r){return r._verdict==="strong";}).length;
+        var c=rows.filter(function(r){return r._verdict==="consider";}).length;
+        var rv=rows.filter(function(r){return r._verdict==="rejected";}).length;
+        return{p:p,s:s,c:c,r:rv,total:s+c+rv};
+      }).filter(function(d){return d.total>0;});
+
+      var maxVal=Math.max.apply(null,ptData.map(function(d){return d.total;}));
+      if(!maxVal)maxVal=1;
+
+      var rawStep=maxVal/4;
+      var tickStep=Math.ceil(rawStep);
+      if(tickStep<1)tickStep=1;
+      var ticks=[];
+      for(var t=0;t<=Math.ceil(maxVal/tickStep);t++)ticks.push(t*tickStep);
+      var yMax=ticks[ticks.length-1]||1;
+
+      var CHART_H=220;
+      var Y_W=28;
+
+      var gridHTML=ticks.map(function(tick){
+        var pct=tick/yMax*100;
+        return '<div style="position:absolute;left:0;right:0;bottom:'+pct+'%;border-top:1px dashed rgba(255,255,255,.07);pointer-events:none">'+
+          '<span style="position:absolute;right:calc(100% + 6px);transform:translateY(-50%);font-size:10px;color:var(--text-muted);font-family:var(--font-mono);white-space:nowrap">'+tick+'</span>'+
+        '</div>';
+      }).join("")+
+      '<div style="position:absolute;bottom:0;left:0;right:0;border-top:1px solid var(--border-strong)"></div>';
+
+      var colsHTML=ptData.map(function(d){
+        var color=pColors[d.p]||"var(--accent)";
+        var pctH =d.total/yMax*100;
+        var pctS =d.total>0?d.s/d.total*100:0;
+        var pctC =d.total>0?d.c/d.total*100:0;
+        var pctR =100-pctS-pctC;
+
+        var tipHtml='<strong>'+d.p+'</strong><br>'+
+          '<span style="color:#4ade80">💚 Strong hire: '+d.s+'</span><br>'+
+          '<span style="color:#fbbf24">🟡 Consider: '+d.c+'</span><br>'+
+          '<span style="color:#f87171">❌ Rejected: '+d.r+'</span><br>'+
+          '<span style="color:var(--text-muted)">Total: '+d.total+'</span>';
+
+        return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;min-width:0" '+
+               'data-tip="'+tipHtml.replace(/"/g,"&quot;")+'">'+
+          '<div style="width:100%;height:'+CHART_H+'px;position:relative;display:flex;flex-direction:column;justify-content:flex-end">'+
+            '<div style="width:100%;height:'+Math.max(pctH,d.total>0?2:0)+'%;'+
+                 'display:flex;flex-direction:column-reverse;'+
+                 'border-radius:4px 4px 0 0;overflow:hidden;'+
+                 'border-bottom:3px solid '+color+'">'+
+              (d.r>0?'<div style="flex:'+Math.max(pctR,2)+';background:#f87171"></div>':'')+
+              (d.c>0?'<div style="flex:'+Math.max(pctC,2)+';background:#fbbf24"></div>':'')+
+              (d.s>0?'<div style="flex:'+Math.max(pctS,2)+';background:#4ade80"></div>':'')+
+            '</div>'+
+          '</div>'+
+          '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:100%">'+
+            '<span style="width:9px;height:9px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
+            '<span style="font-size:11px;color:var(--text-secondary);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;text-align:center">'+d.p+'</span>'+
+            '<span style="font-size:13px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono)">'+d.total+'</span>'+
+          '</div>'+
         '</div>';
       }).join("");
 
-      var globalTip = document.getElementById("_du_global_tip");
-      if (!globalTip) {
-        globalTip = document.createElement("div");
-        globalTip.id = "_du_global_tip";
-        globalTip.style.cssText = "position:fixed;z-index:99999;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:6px;padding:8px 12px;font-size:12px;color:var(--text-primary);white-space:nowrap;line-height:1.6;pointer-events:none;display:none;font-family:var(--font-body)";
-        document.body.appendChild(globalTip);
+      var legendHTML=
+        '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:20px;font-size:11px;color:var(--text-muted)">'+
+          '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:#4ade80"></span>Strong hire</span>'+
+          '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:#fbbf24"></span>Consider</span>'+
+          '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:#f87171"></span>Rejected</span>'+
+          '<span style="color:var(--border-strong)">|</span>'+
+          ptData.map(function(d){
+            var color=pColors[d.p]||"var(--accent)";
+            return'<span style="display:inline-flex;align-items:center;gap:6px">'+
+              '<span style="width:9px;height:9px;border-radius:50%;background:'+color+'"></span>'+d.p+'</span>';
+          }).join("")+
+        '</div>';
+
+      wrap.innerHTML=legendHTML+
+        '<div style="position:relative;padding-left:'+(Y_W+4)+'px">'+
+          '<div style="position:absolute;left:'+(Y_W+4)+'px;right:0;top:0;height:'+CHART_H+'px">'+gridHTML+'</div>'+
+          '<div style="display:flex;align-items:flex-end;gap:12px;height:'+(CHART_H+56)+'px;padding:0 8px">'+
+            colsHTML+
+          '</div>'+
+        '</div>';
+
+      var tip=document.getElementById("_cs_tip");
+      if(!tip){
+        tip=document.createElement("div");
+        tip.id="_cs_tip";
+        tip.style.cssText="position:fixed;z-index:99999;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-primary);white-space:nowrap;line-height:1.9;pointer-events:none;display:none;font-family:var(--font-body);box-shadow:0 4px 20px rgba(0,0,0,.35)";
+        document.body.appendChild(tip);
       }
-
-      container.querySelectorAll(".chart-col").forEach(function(col) {
-        col.addEventListener("mouseenter", function() {
-          var tip = col.dataset.tip; if (!tip) return;
-          globalTip.innerHTML = tip.replace(/&quot;/g, '"'); globalTip.style.display = "block";
+      wrap.querySelectorAll("[data-tip]").forEach(function(el){
+        el.addEventListener("mouseenter",function(){
+          tip.innerHTML=el.dataset.tip.replace(/&quot;/g,'"');
+          tip.style.display="block";
         });
-        col.addEventListener("mousemove", function(e) {
-          globalTip.style.left = (e.clientX - globalTip.offsetWidth / 2) + "px";
-          globalTip.style.top  = (e.clientY - globalTip.offsetHeight - 14) + "px";
+        el.addEventListener("mousemove",function(e){
+          tip.style.left=(e.clientX-tip.offsetWidth/2)+"px";
+          tip.style.top=(e.clientY-tip.offsetHeight-16)+"px";
         });
-        col.addEventListener("mouseleave", function() { globalTip.style.display = "none"; });
-      });
-
-      var nowRange = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
-      var cutoffRange = new Date(nowRange); cutoffRange.setDate(cutoffRange.getDate() - (n-1));
-      var cutoffRangeStr = cutoffRange.getFullYear()+"-"+String(cutoffRange.getMonth()+1).padStart(2,"0")+"-"+String(cutoffRange.getDate()).padStart(2,"0");
-
-      window._duSubmitCounts = {};
-      (window._duSubs || []).forEach(function(s) {
-        if (s && s.userId && s.userId.startsWith("ou_") && s.date >= cutoffRangeStr) {
-          window._duSubmitCounts[s.userId] = (window._duSubmitCounts[s.userId] || 0) + 1;
-        }
-      });
-
-      /* Update submit count cells */
-      (window._duMemberStatuses || []).forEach(function(m) {
-        var cell = document.querySelector('.du-member-row[data-uid="' + m.userId + '"] .du-submit-count');
-        if (!cell) return;
-        var count = (window._duSubmitCounts || {})[m.userId] || 0;
-        cell.innerHTML = count > 0
-          ? '<span style="font-family:var(--font-mono);font-weight:600;color:var(--text-primary)">' + count + '</span><span style="color:var(--text-muted);font-size:11px"> /' + n + 'd</span>'
-          : '<span style="color:var(--text-muted)">—</span>';
-      });
-
-      /* Click day → snapshot */
-      container.querySelectorAll(".chart-col--clickable").forEach(function(col) {
-        col.addEventListener("click", function() {
-          var dateStr = col.dataset.date;
-          var detail  = document.getElementById("chart-day-detail");
-          if (!detail || !dateStr) return;
-          var wasActive = col.classList.contains("chart-col--active");
-          container.querySelectorAll(".chart-col").forEach(function(c) { c.classList.remove("chart-col--active"); });
-          if (wasActive) { detail.style.display = "none"; detail.innerHTML = ""; return; }
-          col.classList.add("chart-col--active");
-          detail.style.display = "block";
-          detail.innerHTML = '<div class="state-loading" style="padding:24px"><div class="spinner"></div><p>Dang tai...</p></div>';
-          if (window._fetchDaySnapshot) window._fetchDaySnapshot(dateStr);
-        });
+        el.addEventListener("mouseleave",function(){tip.style.display="none";});
       });
     };
 
-    var _membersMap = {};
-    Object.entries(data._members || {}).forEach(function(e) { _membersMap[e[1]] = e[0]; });
-    window._duMembersMap   = _membersMap;
-    window._duSnapshotBase = "https://raw.githubusercontent.com/minhwuan1234/daily-update-task-process-pm/main/tracking/snapshots/responses-";
-    window._duMaxTasks     = Math.max.apply(null, (data.memberStatuses || []).map(function(m) { return m.tasks.length || 0; }).concat([1]));
+    /* Chart HTML */
+    var chartHTML=
+      '<div class="members-section" style="margin-bottom:0">'+
+        '<div class="section-header">'+
+          '<span class="section-title">Theo nen tang</span>'+
+          '<span class="section-meta" style="font-size:11px;color:var(--text-muted)">All time</span>'+
+        '</div>'+
+        '<div id="cs-chart-outer" style="padding:20px 24px 16px"></div>'+
+      '</div>';
 
-    window._fetchDaySnapshot = function(dateStr) {
-      var detail = document.getElementById("chart-day-detail");
-      if (!detail) return;
-      var url = window._duSnapshotBase + dateStr + ".json?" + Date.now();
-      fetch(url).then(function(r) {
-        if (!r.ok) throw new Error("404");
-        return r.json();
-      }).then(function(snapshot) {
-        var responseList = Array.isArray(snapshot) ? snapshot : (snapshot.responses || []);
-        responseList = responseList.filter(function(r) { return r.userId && r.userId.startsWith("ou_"); });
-        var maxT = Math.max.apply(null, responseList.map(function(r) { return (r.tasks||[]).length; }).concat([1]));
-        var taskHeaders = "";
-        for (var i = 0; i < maxT; i++) taskHeaders += '<th class="col-task">Task ' + (i+1) + '</th><th class="col-progress">Progress</th>';
-        var rows = responseList.map(function(r) {
-          var name = window._duMembersMap[r.userId] || r.userId;
-          var taskCols = "";
-          for (var i = 0; i < maxT; i++) {
-            var t = (r.tasks||[])[i];
-            if (t) {
-              var pct = parseInt(t.progress||0);
-              var pc  = pct===100?"done":pct>=60?"high":"medium";
-              taskCols += '<td class="col-task" style="font-size:13px;color:var(--text-secondary)">' + (t.title||"—") + '</td>' +
-                          '<td class="col-progress"><span class="progress-badge ' + pc + '">' + (t.progress||"—") + '</span></td>';
-            } else {
-              taskCols += '<td class="col-task" style="color:var(--text-muted)">—</td><td class="col-progress"></td>';
-            }
-          }
-          var time = r.submittedAt ? new Intl.DateTimeFormat("vi-VN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Ho_Chi_Minh"}).format(new Date(r.submittedAt)) : "—";
-          return '<tr><td style="font-weight:500">' + name + '</td>' +
-            '<td><span class="status-pill submitted">✓ Da submit</span></td>' +
-            '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">' + time + '</td>' +
-            taskCols + '</tr>';
-        }).join("");
-        detail.innerHTML =
-          '<div class="members-section">' +
-            '<div class="section-header"><span class="section-title">Chi tiet ngay ' + dateStr + '</span><span class="section-meta">' + responseList.length + ' submissions</span></div>' +
-            '<table class="members-table"><thead><tr><th>Thanh vien</th><th>Trang thai</th><th>Gio submit</th>' + taskHeaders + '</tr></thead><tbody>' + rows + '</tbody></table>' +
-          '</div>';
-      }).catch(function() {
-        detail.innerHTML = '<div class="state-empty" style="padding:24px"><i class="ti ti-inbox" style="font-size:28px"></i><p>Chua co du lieu cho ngay ' + dateStr + '</p></div>';
-      });
-    };
-
-    var chartHTML =
-      '<div class="members-section" style="margin-bottom:0">' +
-        '<div class="section-header">' +
-          '<span class="section-title">Lich su submit</span>' +
-          '<select id="chart-range" style="background:var(--bg-hover);border:1px solid var(--border-strong);color:var(--text-primary);font-size:12px;padding:4px 10px;border-radius:var(--radius-sm);cursor:pointer;outline:none">' +
-            '<option value="7" selected="selected">7 ngay</option>' +
-            '<option value="14">2 tuan</option>' +
-            '<option value="30">1 thang</option>' +
-            '<option value="90">3 thang</option>' +
-          '</select>' +
-        '</div>' +
-        '<div id="chart-container" class="chart-wrap"></div>' +
-      '</div>' +
-      '<div id="chart-day-detail" style="display:none;margin-bottom:24px" data-active-date=""></div>';
-
-    var now30 = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
-    var cutoff = new Date(now30); cutoff.setDate(cutoff.getDate() - 29);
-    var cutoffStr = cutoff.getFullYear()+"-"+String(cutoff.getMonth()+1).padStart(2,"0")+"-"+String(cutoff.getDate()).padStart(2,"0");
-    var submitCounts = {};
-    var rawSubs = (data && data._rawSubmissions) ? data._rawSubmissions : [];
-    rawSubs.forEach(function(s) {
-      if (s && s.userId && s.userId.startsWith("ou_") && s.date >= cutoffStr)
-        submitCounts[s.userId] = (submitCounts[s.userId] || 0) + 1;
-    });
-    var today30 = new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Ho_Chi_Minh"}));
-    var todayStr = today30.getFullYear()+"-"+String(today30.getMonth()+1).padStart(2,"0")+"-"+String(today30.getDate()).padStart(2,"0");
-    (data.responseList || []).forEach(function(r) {
-      if (!r || !r.userId) return;
-      var alreadyCounted = rawSubs.some(function(s) { return s.userId === r.userId && s.date === todayStr; });
-      if (!alreadyCounted) submitCounts[r.userId] = (submitCounts[r.userId] || 0) + 1;
-    });
-
-    var rows = data.memberStatuses.slice().sort(function(a, b) {
-      if (a.status === b.status) return a.name.localeCompare(b.name);
-      return a.status === "submitted" ? -1 : 1;
-    }).map(function(m) {
-      var totalSubmits = (submitCounts && m && m.userId) ? (submitCounts[m.userId] || 0) : 0;
-      var submitCell = totalSubmits > 0
-        ? '<span style="font-family:var(--font-mono);font-weight:600;color:var(--text-primary)">' + totalSubmits + '</span><span style="color:var(--text-muted);font-size:11px"> /30d</span>'
-        : '<span style="color:var(--text-muted)">—</span>';
-      var maxTasks = Math.max.apply(null, data.memberStatuses.map(function(x) { return x.tasks.length || 0; }).concat([1]));
-      var timeStr = utils ? utils.formatTime(m.submittedAt) : "—";
-      var statusCell = '<span class="status-pill ' + m.status + '">' + (m.status==="submitted"?"✓ Da submit":"✗ Chua submit") + '</span>';
-      var nameCell = '<span style="font-weight:500">' + m.name + '</span>' +
-        (m.message ? '<br><span style="font-size:11px;color:var(--text-muted)">📎 ' + m.message.substring(0,60) + (m.message.length>60?"…":"") + '</span>' : '');
-      var taskCols = "";
-      for (var ti = 0; ti < maxTasks; ti++) {
-        var t = m.tasks[ti];
-        if (t) {
-          var pct = parseInt(t.progress||0);
-          var pc  = pct===100?"done":pct>=60?"high":"medium";
-          taskCols += '<td style="font-size:12px;color:var(--text-secondary);max-width:200px">' + (t.title||"—") + '</td>' +
-            '<td class="col-progress"><span class="progress-badge ' + pc + '">' + (t.progress||"—") + '</span></td>';
-        } else {
-          taskCols += '<td class="col-task" style="color:var(--text-muted);font-size:12px">—</td><td class="col-progress"></td>';
-        }
-      }
-      return '<tr class="du-member-row" data-uid="' + m.userId + '">' +
-        '<td>' + nameCell + '</td>' +
-        '<td>' + statusCell + '</td>' +
-        '<td style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">' + timeStr + '</td>' +
-        taskCols +
-        '<td class="du-submit-count">' + submitCell + '</td>' +
+    /* Summary table */
+    var summaryRows=(data.platforms||[]).map(function(p){
+      var rows=(data.all||[]).filter(function(r){return r._platform===p;});
+      var s=rows.filter(function(r){return r._verdict==="strong";}).length;
+      var c=rows.filter(function(r){return r._verdict==="consider";}).length;
+      var rv=rows.filter(function(r){return r._verdict==="rejected";}).length;
+      var t=rows.length;
+      var sRate=t>0?Math.round(s/t*100):0;
+      var color=(data.pColors||{})[p]||"var(--accent)";
+      return'<tr>'+
+        '<td><span style="display:inline-flex;align-items:center;gap:8px">'+
+          '<span style="width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
+          '<span style="font-weight:500">'+p+'</span></span></td>'+
+        '<td style="text-align:center;font-weight:600;color:#4ade80">'+s+'</td>'+
+        '<td style="text-align:center;font-weight:600;color:#fbbf24">'+c+'</td>'+
+        '<td style="text-align:center;font-weight:600;color:#f87171">'+rv+'</td>'+
+        '<td style="text-align:center;font-family:var(--font-mono);font-weight:700">'+t+'</td>'+
+        '<td style="min-width:120px">'+
+          '<div style="display:flex;align-items:center;gap:8px">'+
+            '<div style="flex:1;height:6px;background:var(--bg-hover);border-radius:3px;overflow:hidden">'+
+              '<div style="height:100%;width:'+sRate+'%;background:#4ade80;border-radius:3px"></div>'+
+            '</div>'+
+            '<span style="font-size:11px;color:var(--text-muted);width:32px;text-align:right">'+sRate+'%</span>'+
+          '</div>'+
+        '</td>'+
       '</tr>';
     }).join("");
 
-    var membersHTML =
-      '<div class="members-section">' +
-        '<div class="section-header"><span class="section-title">Trang thai submit hom nay</span><span class="section-meta">' + data.submittedCount + '/' + data.totalMembers + ' members</span></div>' +
-        (function() {
-          var maxTasks = Math.max.apply(null, data.memberStatuses.map(function(m) { return m.tasks.length || 0; }).concat([1]));
-          var taskHeaders = "";
-          for (var i = 0; i < maxTasks; i++) taskHeaders += '<th class="col-task">Task ' + (i+1) + '</th><th class="col-progress">Progress</th>';
-          return '<table class="members-table"><thead><tr>' +
-            '<th>Thanh vien</th><th>Trang thai</th><th>Gio submit</th>' + taskHeaders + '<th>Submit/30d</th>' +
-          '</tr></thead><tbody>' + rows + '</tbody></table>';
-        })() +
+    var summaryHTML=
+      '<div class="members-section">'+
+        '<div class="section-header"><span class="section-title">Tong hop theo nen tang</span><span class="section-meta">All time</span></div>'+
+        '<table class="members-table">'+
+          '<thead><tr>'+
+            '<th>Nen tang</th>'+
+            '<th style="text-align:center">💚 Strong</th>'+
+            '<th style="text-align:center">🟡 Consider</th>'+
+            '<th style="text-align:center">❌ Rejected</th>'+
+            '<th style="text-align:center">Total</th>'+
+            '<th>Strong rate</th>'+
+          '</tr></thead>'+
+          '<tbody>'+summaryRows+'</tbody>'+
+        '</table>'+
       '</div>';
 
-    var taskRowsHTML = data.allTasks.length === 0
-      ? '<div class="state-empty" style="padding:24px"><i class="ti ti-inbox" style="font-size:28px"></i><p>Chua co task nao duoc submit</p></div>'
-      : data.allTasks.map(function(t) {
-          var pct = parseInt(t.progress||0);
-          var pc  = pct===100?"done":pct>=60?"high":pct>=30?"medium":"low";
-          var rawTime = (t.timeSpent || "").trim();
-          var safeTime = /^[\d.]+h?$/.test(rawTime) ? rawTime : "—";
-          return '<div class="task-row">' +
-            '<div class="task-title-cell">' + (t.title||"—") + '</div>' +
-            '<div class="task-member-cell">' + (t.memberName||"—") + '</div>' +
-            '<div class="progress-badge ' + pc + '" style="text-align:center">' + (t.progress||"—") + '</div>' +
-            '<div class="time-badge">' + safeTime + '</div>' +
-          '</div>';
-        }).join("");
+    /* Candidates table */
+    var verdictOrder={strong:0,consider:1,rejected:2};
+    var sorted=(data.all||[]).slice().sort(function(a,b){
+      if(b._dateStr!==a._dateStr)return b._dateStr.localeCompare(a._dateStr);
+      return(verdictOrder[a._verdict]||0)-(verdictOrder[b._verdict]||0);
+    });
 
-    var tasksHTML =
-      '<div class="task-breakdown">' +
-        '<div class="section-header"><span class="section-title">Chi tiet tasks</span><span class="section-meta">' + data.allTasks.length + ' tasks</span></div>' +
-        '<div class="task-row task-header">' +
-          '<div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">Task</div>' +
-          '<div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">Thanh vien</div>' +
-          '<div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);text-align:center">Progress</div>' +
-          '<div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);text-align:right">Time</div>' +
-        '</div>' +
-        '<div style="height:1px;background:var(--border);margin:0 20px"></div>' +
-        taskRowsHTML +
+    var VERDICT_CFG={
+      strong:  {label:"💚 STRONG HIRE",pillClass:"submitted"},
+      consider:{label:"🟡 CONSIDER",   pillClass:""},
+      rejected:{label:"❌ REJECTED",    pillClass:"missing"}
+    };
+
+    function buildRows(rows){
+      if(!rows.length)return'<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:32px">'+
+        '<i class="ti ti-inbox" style="font-size:24px;display:block;margin-bottom:8px"></i>Chua co ung vien</td></tr>';
+      return rows.map(function(r){
+        var vc=VERDICT_CFG[r._verdict]||{label:r._verdict,pillClass:""};
+        var cvLink=r["Portfolio"]
+          ?'<a href="'+r["Portfolio"]+'" target="_blank" style="color:var(--accent);font-size:11px"><i class="ti ti-file-cv"></i> CV</a>'
+          :'<span style="color:var(--text-muted)">—</span>';
+        var pColor=(data.pColors||{})[r._platform]||"var(--text-muted)";
+        return'<tr>'+
+          '<td style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);white-space:nowrap">'+r._dateStr+'</td>'+
+          '<td style="font-weight:500">'+r["Name"]+'</td>'+
+          '<td style="font-size:12px;color:var(--text-secondary)">'+r._role+'</td>'+
+          '<td><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)">'+
+            '<span style="width:7px;height:7px;border-radius:50%;background:'+pColor+';flex-shrink:0"></span>'+
+            r._platform+'</span></td>'+
+          '<td><span class="status-pill '+vc.pillClass+'" style="font-size:10px;letter-spacing:.03em">'+vc.label+'</span></td>'+
+          '<td style="font-family:var(--font-mono);font-weight:600">'+r["Total Score Display"]+'</td>'+
+          '<td>'+cvLink+'</td>'+
+        '</tr>';
+      }).join("");
+    }
+
+    var roles=data.roles||[];
+    var roleTabBar=
+      '<div style="display:flex;gap:0;border-bottom:1px solid var(--border);overflow-x:auto">'+
+      ['Tat ca'].concat(roles).map(function(role,idx){
+        var count=role==='Tat ca'?sorted.length:sorted.filter(function(r){return r._role===role;}).length;
+        var isActive=idx===0;
+        return'<button class="cs-role-tab" data-role="'+role+'" style="'+
+          'padding:9px 16px;font-size:12px;font-family:var(--font-body);background:transparent;border:none;'+
+          'border-bottom:2px solid '+(isActive?'var(--accent)':'transparent')+';'+
+          'color:'+(isActive?'var(--accent)':'var(--text-muted)')+';'+
+          'cursor:pointer;white-space:nowrap;transition:color .15s,border-color .15s">'+
+          role+' <span style="font-size:10px;opacity:.65">('+count+')</span>'+
+        '</button>';
+      }).join("")+'</div>';
+
+    var candidatesHTML=
+      '<div class="members-section">'+
+        '<div class="section-header">'+
+          '<span class="section-title">Ung vien theo vi tri</span>'+
+          '<span class="section-meta">'+sorted.length+' records</span>'+
+        '</div>'+
+        roleTabBar+
+        '<table class="members-table">'+
+          '<thead><tr><th>Ngay</th><th>Ten</th><th>Vi tri</th><th>Nen tang</th><th>Ket qua</th><th>Diem</th><th>CV</th></tr></thead>'+
+          '<tbody id="cs-role-tbody">'+buildRows(sorted)+'</tbody>'+
+        '</table>'+
       '</div>';
 
-    var taskInfoHTML =
-      '<div class="tool-info-page">' +
-        '<div class="tool-info-hero">' +
-          '<div class="tool-info-icon"><i class="ti ti-square-check"></i></div>' +
-          '<div>' +
-            '<h2 class="tool-info-name">Daily Task Update Process PM</h2>' +
-            '<p class="tool-info-tagline">He thong tracking standup hang ngay cho team F.Learning Studio</p>' +
-          (data._lastUpdated ? '<p style="font-size:11px;color:var(--text-muted);margin-top:6px;font-family:var(--font-mono)">Last updated: ' + new Date(data._lastUpdated).toLocaleString("vi-VN", {timeZone:"Asia/Ho_Chi_Minh"}) + '</p>' : '') +
-          '</div>' +
-        '</div>' +
-        '<div class="tool-info-section"><div class="tool-info-section-title"><i class="ti ti-alert-triangle"></i> Van de can giai quyet</div><p class="tool-info-text">Them noi dung o day.</p></div>' +
-        '<div class="tool-info-section"><div class="tool-info-section-title"><i class="ti ti-info-circle"></i> Mo ta</div><p class="tool-info-text">Tool nay giup PM theo doi viec submit standup hang ngay cua toan bo thanh vien. Moi ngay, tung thanh vien nhan link ca nhan qua Lark, dien progress tung task va gui ve. Du lieu duoc tong hop tu dong va hien thi tren dashboard nay.</p></div>' +
-        '<div class="tool-info-grid">' +
-          '<div class="tool-info-section"><div class="tool-info-section-title"><i class="ti ti-settings"></i> Cau hinh</div><div class="tool-info-kv"><div class="kv-row"><span class="kv-key">Timezone</span><span class="kv-val">Asia/Ho_Chi_Minh</span></div><div class="kv-row"><span class="kv-key">Cutoff time</span><span class="kv-val">18:00 ICT</span></div><div class="kv-row"><span class="kv-key">Tan suat</span><span class="kv-val">Hang ngay (Thu 2 – Thu 6)</span></div><div class="kv-row"><span class="kv-key">Trigger</span><span class="kv-val">responses.json thay doi → GitHub Actions</span></div><div class="kv-row"><span class="kv-key">Platform</span><span class="kv-val">Lark / Feishu</span></div></div></div>' +
-          '<div class="tool-info-section"><div class="tool-info-section-title"><i class="ti ti-database"></i> Data sources</div><div class="tool-info-kv"><div class="kv-row"><span class="kv-key">daily-tasks.json</span><span class="kv-val kv-mono">daily-update-task-process-pm</span></div><div class="kv-row"><span class="kv-key">responses.json</span><span class="kv-val kv-mono">daily-update-task-process-pm</span></div><div class="kv-row"><span class="kv-key">members.json</span><span class="kv-val kv-mono">daily-update-task-process-pm</span></div><div class="kv-row"><span class="kv-key">submissions.json</span><span class="kv-val kv-mono">tracking/daily-update-submissions.json</span></div></div></div>' +
-        '</div>' +
-        '<div class="tool-info-section"><div class="tool-info-section-title"><i class="ti ti-link"></i> Lien ket</div><div class="tool-info-links"><a class="tool-info-link" href="https://github.com/minhwuan1234/daily-update-task-process-pm" target="_blank"><i class="ti ti-brand-github"></i> daily-update-task-process-pm</a><a class="tool-info-link" href="https://github.com/minhwuan1234/admin-dashboard" target="_blank"><i class="ti ti-brand-github"></i> admin-dashboard</a></div></div>' +
+    /* Info tab */
+    var infoHTML=
+      '<div class="tool-info-page">'+
+        '<div class="tool-info-hero">'+
+          '<div class="tool-info-icon"><i class="ti ti-user-check"></i></div>'+
+          '<div><h2 class="tool-info-name">Candidate Scoring</h2>'+
+          '<p class="tool-info-tagline">He thong cham diem CV tu dong bang AI cho cac vi tri tuyen dung tai F.Learning Studio.</p></div>'+
+        '</div>'+
+        '<div class="tool-info-section">'+
+          '<div class="tool-info-section-title"><i class="ti ti-info-circle"></i> Mo ta</div>'+
+          '<p class="tool-info-text">Khi co ung vien moi them vao Google Sheet, n8n tu dong tai CV, extract text, cham diem theo rubric rieng cua tung vi tri bang GPT, roi day ket qua vao 3 tab: Rejected / Considerable / Strong Match.</p>'+
+        '</div>'+
+        '<div class="tool-info-grid">'+
+          '<div class="tool-info-section">'+
+            '<div class="tool-info-section-title"><i class="ti ti-settings"></i> Cau hinh</div>'+
+            '<div class="tool-info-kv">'+
+              '<div class="kv-row"><span class="kv-key">Trigger</span><span class="kv-val">Google Sheets — row added</span></div>'+
+              '<div class="kv-row"><span class="kv-key">AI model</span><span class="kv-val">GPT-4o-mini</span></div>'+
+              '<div class="kv-row"><span class="kv-key">Positions</span><span class="kv-val">BD, Account, L&D, PC, HR Intern</span></div>'+
+              '<div class="kv-row"><span class="kv-key">Verdict</span><span class="kv-val">Strong ≥80% / Consider ≥60% / Weak</span></div>'+
+            '</div>'+
+          '</div>'+
+          '<div class="tool-info-section">'+
+            '<div class="tool-info-section-title"><i class="ti ti-database"></i> Data sources</div>'+
+            '<div class="tool-info-kv">'+
+              '<div class="kv-row"><span class="kv-key">Input</span><span class="kv-val kv-mono">[FAB] Recruitment data</span></div>'+
+              '<div class="kv-row"><span class="kv-key">Output</span><span class="kv-val kv-mono">Candidate Scoring Sheet</span></div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="tool-info-section">'+
+          '<div class="tool-info-section-title"><i class="ti ti-link"></i> Lien ket</div>'+
+          '<div class="tool-info-links">'+
+            '<a class="tool-info-link" href="https://n8n.tonytran.design/workflow/pExOqbUpHFPYapsI" target="_blank"><i class="ti ti-topology-star"></i> n8n Workflow</a>'+
+            '<a class="tool-info-link" href="https://docs.google.com/spreadsheets/d/19YTdoUKx_MtflEcz7pyNxAfmvf-MEROsleODroj7fiw" target="_blank"><i class="ti ti-table"></i> Google Sheet Output</a>'+
+          '</div>'+
+        '</div>'+
       '</div>';
 
-    window._duTrackingHTML = statsHTML + chartHTML + membersHTML + tasksHTML;
-    window._duTaskInfoHTML = taskInfoHTML;
+    /* Store + init */
+    window._csTrackingHTML=statsHTML+chartHTML+summaryHTML+candidatesHTML;
+    window._csInfoHTML    =infoHTML;
+    window._csSorted      =sorted;
+    window._csBuildRows   =buildRows;
+    window._csData        =data; /* store for insight panel */
 
-    window._initDUTabs = function() {
-      var tracking = document.getElementById("tab-tracking");
-      var taskinfo = document.getElementById("tab-taskinfo");
-      if (tracking) tracking.innerHTML = window._duTrackingHTML;
-      if (taskinfo) taskinfo.innerHTML = window._duTaskInfoHTML;
+    window._initCSTabs=function(){
+      var tracking=document.getElementById("tab-tracking");
+      var info    =document.getElementById("tab-info");
+      if(tracking)tracking.innerHTML=window._csTrackingHTML;
+      if(info)    info.innerHTML    =window._csInfoHTML;
 
-      setTimeout(function() {
-        var chartRange = document.getElementById("chart-range");
-        if (chartRange && window._buildDUChart) {
-          window._buildDUChart(parseInt(chartRange.value));
-          chartRange.addEventListener("change", function() { window._buildDUChart(parseInt(this.value)); });
+      setTimeout(function(){
+        if(window._buildCSChart)window._buildCSChart();
+
+        /* role tabs */
+        var roleTabs=document.querySelectorAll(".cs-role-tab");
+        var tbody   =document.getElementById("cs-role-tbody");
+        roleTabs.forEach(function(btn){
+          btn.addEventListener("click",function(){
+            roleTabs.forEach(function(b){
+              b.style.borderBottomColor="transparent";
+              b.style.color="var(--text-muted)";
+            });
+            btn.style.borderBottomColor="var(--accent)";
+            btn.style.color="var(--accent)";
+            var role=btn.dataset.role;
+            var rows=role==="Tat ca"
+              ?window._csSorted
+              :(window._csSorted||[]).filter(function(r){return r._role===role;});
+            if(tbody)tbody.innerHTML=window._csBuildRows(rows);
+          });
+        });
+
+        /* insight FAB */
+        var fab=document.getElementById("cs-insight-fab");
+        if(fab){
+          fab.addEventListener("click",function(){
+            _csOpenInsightPanel(window._csData||{}, false);
+          });
         }
 
-        /* Insight FAB */
-        var fab = document.getElementById("du-insight-fab");
-        if (fab) fab.addEventListener("click", function() { _duOpenInsightPanel(window._duData || {}, false); });
-      }, 50);
+      },50);
 
-      var btns  = document.querySelectorAll(".tab-btn");
-      var panes = document.querySelectorAll(".tab-pane");
-      btns.forEach(function(btn) {
-        btn.addEventListener("click", function() {
-          btns.forEach(function(b) { b.classList.remove("active"); });
-          panes.forEach(function(p) { p.style.display = "none"; p.classList.remove("active"); });
+      /* main tabs */
+      var btns =document.querySelectorAll(".tab-btn");
+      var panes=document.querySelectorAll(".tab-pane");
+      btns.forEach(function(btn){
+        btn.addEventListener("click",function(){
+          btns.forEach(function(b){b.classList.remove("active");});
+          panes.forEach(function(p){p.style.display="none";p.classList.remove("active");});
           btn.classList.add("active");
-          var target = document.getElementById("tab-" + btn.dataset.tab);
-          if (target) { target.style.display = "block"; target.classList.add("active"); }
-          if (btn.dataset.tab === "tracking") {
-            setTimeout(function() {
-              var chartRange = document.getElementById("chart-range");
-              if (chartRange && window._buildDUChart) window._buildDUChart(parseInt(chartRange.value));
-            }, 50);
+          var target=document.getElementById("tab-"+btn.dataset.tab);
+          if(target){target.style.display="block";target.classList.add("active");}
+          if(btn.dataset.tab==="tracking"){
+            setTimeout(function(){if(window._buildCSChart)window._buildCSChart();},50);
           }
         });
       });
