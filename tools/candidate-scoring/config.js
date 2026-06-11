@@ -6,7 +6,7 @@
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 /* ── OpenAI config ── */
-var _CS_OPENAI_KEY = "%%OPENAI_KEY%%";
+var _CS_OPENAI_KEY = "";
 var _CS_OPENAI_MODEL = "gpt-5.5";
 
 /* ── ISO week helper ── */
