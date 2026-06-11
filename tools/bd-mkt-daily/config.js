@@ -5,7 +5,7 @@
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 /* ── Worker URL ── */
-var _BD_WORKER_URL = "https://admin-dashboard.minhwuan889.workers.dev/";
+var _BD_WORKER_URL = "https://admin-dashboard.minhwuan889.workers.dev";
 
 /* ── OpenAI config ── */
 var _BD_OPENAI_KEY   = "sk-PASTE_YOUR_KEY_HERE";
