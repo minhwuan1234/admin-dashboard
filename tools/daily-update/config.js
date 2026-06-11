@@ -5,8 +5,8 @@
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 /* ── OpenAI config (dùng chung key với candidate-scoring) ── */
-var _DU_OPENAI_KEY   = "sk-PASTE_YOUR_KEY_HERE";
-var _DU_OPENAI_MODEL = "gpt-4o-mini";
+var _DU_OPENAI_KEY = "%%OPENAI_KEY%%";
+var _DU_OPENAI_MODEL = "gpt-5.5";
 
 /* ── ISO week helper ── */
 function _duGetISOWeek(date) {
