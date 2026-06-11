@@ -86,7 +86,7 @@ async function _duCallOpenAI(summary) {
     messages: [
       {
         role: "system",
-        content: "Ban la PM assistant cua F.Learning Studio. Nhan vao data standup hang ngay cua team, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"consistencyInsight\":\"string\",\"taskInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"]}. Neu co member missing, de cap nhung khong neu ten. Highlights toi da 4. Recommendations toi da 3. Recommedation trả về phải đưa ra được các cách bạn có thể cải thiện tỉ lệ rating "
+        content: "Ban la PM assistant cua F.Learning Studio. Nhan vao data standup hang ngay cua team, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"consistencyInsight\":\"string\",\"taskInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"],\"toolUsage\":\"string\",\"frictions\":\"string\",\"adjustments\":\"string\"}. Neu co member missing, de cap nhung khong neu ten. Highlights toi da 4. Recommendations toi da 3. toolUsage: mo ta cach team dang dung daily update tool. frictions: friction/pattern lam giam ti le submit. adjustments: de xuat thay doi de tang submission rate."
       },
       {
         role: "user",
@@ -172,7 +172,26 @@ function _duRenderInsightHTML(insight, week, isCache) {
         '</div>' +
       '</div>' +
       (recRows ? '<div><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:10px">Khuyến nghị</p>' + recRows + '</div>' : '') +
+
+      /* 3 questions section */
+      '<div style="border-top:1px solid var(--border);padding-top:20px;display:flex;flex-direction:column;gap:12px">' +
+        '<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted)">Đánh giá tool</p>' +
+        _duQABlock("ti-tool", "Tool đang được dùng như thế nào?", insight.toolUsage) +
+        _duQABlock("ti-alert-triangle", "Problem / friction nào đang thấy trong data?", insight.frictions) +
+        _duQABlock("ti-adjustments", "Cần điều chỉnh gì?", insight.adjustments) +
+      '</div>' +
+
     '</div>' +
+  '</div>';
+}
+
+function _duQABlock(icon, question, answer) {
+  return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden">' +
+    '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg-hover);border-bottom:1px solid var(--border)">' +
+      '<i class="ti ' + icon + '" style="font-size:13px;color:var(--accent)"></i>' +
+      '<p style="font-size:11px;font-weight:600;color:var(--text-primary)">' + question + '</p>' +
+    '</div>' +
+    '<p style="font-size:13px;color:var(--text-secondary);line-height:1.6;padding:12px 14px">' + (answer || '—') + '</p>' +
   '</div>';
 }
 
