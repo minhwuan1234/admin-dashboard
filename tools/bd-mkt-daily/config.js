@@ -104,19 +104,15 @@ function _bdAggregate(data) {
 
 /* ── Call OpenAI API ── */
 async function _bdCallOpenAI(summary) {
+  var sysPrompt = 'Bạn là PM assistant của F.Learning Studio, phụ trách team BD-MKT. Nhận vào data daily report (morning plan + evening actual) của team, phân tích và trả về insight bằng tiếng Việt. Trả về JSON THUẦN TÚY, không thêm gì ngoài JSON. Format: {"summary":"Tổng quan 1-2 câu về tình hình submit hôm nay","highlights":[{"type":"positive|warning|neutral","text":"Điểm đáng chú ý ngắn gọn"}],"morningEveningGap":"Nhận xét về chênh lệch giữa morning và evening submit rate — nguyên nhân có thể là gì","planActualInsight":"Nhận xét về plan vs actual execution: team có đang over hoặc under estimate không","consistencyInsight":"Nhận xét về mức độ consistent khi submit cả 2 buổi trong tuần","weeklyTrend":"Xu hướng submit so với tuần trước","recommendations":["Cách cụ thể để tăng tỉ lệ submit cả morning lẫn evening — thay đổi workflow, reminder, hoặc form"],"toolUsage":"Mô tả cách team BD-MKT đang sử dụng daily report tool và mức độ hiệu quả thực tế","frictions":"Các friction cụ thể đang làm giảm tỉ lệ submit morning/evening — dựa trên pattern trong data","adjustments":"Đề xuất điều chỉnh cụ thể để tăng tỉ lệ submit cả 2 buổi: thời điểm nhắc, độ dài form, quy trình"}. Highlights tối đa 4. Recommendations tối đa 3. Không nêu tên cá nhân. Mọi nhận xét phải dựa trên số liệu thực tế.';
+
   var payload = {
     model:       _BD_OPENAI_MODEL,
     max_tokens:  800,
     temperature: 0.4,
     messages: [
-      {
-        role: "system",
-        content: "Ban la PM assistant cua F.Learning Studio, phu trach team BD-MKT. Nhan vao data daily report (morning plan + evening actual) cua team, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"morningEveningGap\":\"string\",\"planActualInsight\":\"string\",\"consistencyInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"]}. Highlights toi da 4. Recommendations toi da 3. Khong neu ten ca nhan.Recommedation trả về phải đưa ra được các cách bạn có thể cải thiện tỉ lệ rating"
-      },
-      {
-        role: "user",
-        content: "Data BD-MKT tuan " + summary.generatedWeek + ": " + JSON.stringify(summary)
-      }
+      { role: "system", content: sysPrompt },
+      { role: "user",   content: "Data BD-MKT tuần " + summary.generatedWeek + ": " + JSON.stringify(summary).replace(/[\u0000-\u001F]/g, "") }
     ]
   };
 
@@ -201,7 +197,26 @@ function _bdRenderInsightHTML(insight, week, isCache) {
         '</div>' +
       '</div>' +
       (recRows ? '<div><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:10px">Khuyến nghị</p>' + recRows + '</div>' : '') +
+
+      /* 3 questions section */
+      '<div style="border-top:1px solid var(--border);padding-top:20px;display:flex;flex-direction:column;gap:12px">' +
+        '<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted)">Đánh giá tool</p>' +
+        _bdQABlock("ti-tool", "Tool đang được dùng như thế nào?", insight.toolUsage) +
+        _bdQABlock("ti-alert-triangle", "Problem / friction nào đang thấy trong data?", insight.frictions) +
+        _bdQABlock("ti-adjustments", "Cần điều chỉnh gì?", insight.adjustments) +
+      '</div>' +
+
     '</div>' +
+  '</div>';
+}
+
+function _bdQABlock(icon, question, answer) {
+  return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden">' +
+    '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg-hover);border-bottom:1px solid var(--border)">' +
+      '<i class="ti ' + icon + '" style="font-size:13px;color:var(--accent)"></i>' +
+      '<p style="font-size:11px;font-weight:600;color:var(--text-primary)">' + question + '</p>' +
+    '</div>' +
+    '<p style="font-size:13px;color:var(--text-secondary);line-height:1.6;padding:12px 14px">' + (answer || '—') + '</p>' +
   '</div>';
 }
 
