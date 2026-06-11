@@ -2,11 +2,12 @@
    TOOL CONFIG: Candidate Scoring
    Data: Google Sheets 3 tabs (Rejected / Considerable / Strong Match)
    ══════════════════════════════════════════════════════════════ */
+
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 /* ── OpenAI config ── */
 var _CS_OPENAI_KEY = "sk-PASTE_YOUR_KEY_HERE";
-var _CS_OPENAI_MODEL = "gpt-4o-mini";
+var _CS_OPENAI_MODEL = "gpt-5.5";
 
 /* ── ISO week helper ── */
 function _csGetISOWeek(date) {
@@ -81,7 +82,7 @@ async function _csCallOpenAI(summary) {
     messages: [
       {
         role: "system",
-        content: "Ban la talent analyst cua F.Learning Studio. Nhan vao aggregated data tuyen dung, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"platformInsight\":\"string\",\"roleInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"]}. Highlights toi da 4. Recommendations toi da 3. Recommedation trả về phải đưa ra được các cách bạn có thể cải thiện tỉ lệ rating"
+        content: "Ban la talent analyst cua F.Learning Studio. Nhan vao aggregated data tuyen dung, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"platformInsight\":\"string\",\"roleInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"],\"toolUsage\":\"string\",\"frictions\":\"string\",\"adjustments\":\"string\"}. Highlights toi da 4. Recommendations toi da 3. toolUsage: mo ta cach team dang dung tool va hieu qua. frictions: problem/friction cu the trong data. adjustments: de xuat dieu chinh de tang ti le strong hire."
       },
       {
         role: "user",
@@ -188,7 +189,25 @@ function _csRenderInsightHTML(insight, week, isCache) {
       /* recommendations */
       (recRows ? '<div><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:10px">Khuyến nghị</p>' + recRows + '</div>' : '') +
 
+      /* 3 questions section */
+      '<div style="border-top:1px solid var(--border);padding-top:20px;display:flex;flex-direction:column;gap:12px">' +
+        '<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted)">Đánh giá tool</p>' +
+        _csQABlock("ti-tool", "Tool đang được dùng như thế nào?", insight.toolUsage) +
+        _csQABlock("ti-alert-triangle", "Problem / friction nào đang thấy trong data?", insight.frictions) +
+        _csQABlock("ti-adjustments", "Cần điều chỉnh gì?", insight.adjustments) +
+      '</div>' +
+
     '</div>' + /* end scrollable */
+  '</div>';
+}
+
+function _csQABlock(icon, question, answer) {
+  return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden">' +
+    '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg-hover);border-bottom:1px solid var(--border)">' +
+      '<i class="ti ' + icon + '" style="font-size:13px;color:var(--accent)"></i>' +
+      '<p style="font-size:11px;font-weight:600;color:var(--text-primary)">' + question + '</p>' +
+    '</div>' +
+    '<p style="font-size:13px;color:var(--text-secondary);line-height:1.6;padding:12px 14px">' + (answer || '—') + '</p>' +
   '</div>';
 }
 
