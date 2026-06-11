@@ -2,7 +2,6 @@
    TOOL CONFIG: Candidate Scoring
    Data: Google Sheets 3 tabs (Rejected / Considerable / Strong Match)
    ══════════════════════════════════════════════════════════════ */
-
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 /* ── OpenAI config ── */
