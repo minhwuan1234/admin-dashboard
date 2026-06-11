@@ -132,8 +132,7 @@ async function _bdCallOpenAI(summary) {
     method: "POST",
     headers: {
       "Content-Type":  "application/json",
-      "Authorization": "Bearer " + _BD_OPENAI_KEY
-    },
+      "Authorization": "Bearer " + (localStorage.getItem("fl_openai_key") || _BD_OPENAI_KEY)    },
     body: JSON.stringify({
       model:       _BD_OPENAI_MODEL,
       max_tokens:  800,
