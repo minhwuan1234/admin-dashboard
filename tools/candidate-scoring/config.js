@@ -74,26 +74,36 @@ function _csAggregate(data) {
 }
 
 /* ── Call OpenAI API ── */
-async function _csCallOpenAI(summary) {
-  var systemPrompt =
-    "Bạn là talent analyst của F.Learning Studio — công ty thiết kế e-learning tại Việt Nam. " +
-    "Nhận vào aggregated data tuyển dụng (không có thông tin cá nhân), trả về insight ngắn gọn, actionable bằng tiếng Việt. " +
-    "Format output CHÍNH XÁC theo cấu trúc JSON sau, không thêm gì ngoài JSON:\n" +
-    "{\n" +
-    "  \"summary\": \"1-2 câu tổng quan tuần này\",\n" +
-    "  \"highlights\": [\n" +
-    "    {\"type\": \"positive|warning|neutral\", \"text\": \"insight ngắn\"},\n" +
-    "    ...\n" +
-    "  ],\n" +
-    "  \"platformInsight\": \"1 câu nhận xét về platform nào đang hiệu quả nhất/kém nhất\",\n" +
-    "  \"roleInsight\": \"1 câu nhận xét về vị trí nào đang khan hiếm ứng viên qualified\",\n" +
-    "  \"weeklyTrend\": \"1 câu về xu hướng tuần gần đây (tăng/giảm/ổn định)\",\n" +
-    "  \"recommendations\": [\n" +
-    "    \"action cụ thể 1\",\n" +
-    "    \"action cụ thể 2\"\n" +
-    "  ]\n" +
-    "}\n" +
-    "Highlights tối đa 4 items. Recommendations tối đa 3 items. Ngắn gọn, không sáo rỗng.";
+var payload = {
+  model:       _CS_OPENAI_MODEL,
+  max_tokens:  800,
+  temperature: 0.4,
+  messages: [
+    {
+      role: "system",
+      content: [
+        "Ban la talent analyst cua F.Learning Studio - cong ty thiet ke e-learning tai Viet Nam.",
+        "Nhan vao aggregated data tuyen dung (khong co thong tin ca nhan), tra ve insight ngan gon, actionable bang tieng Viet.",
+        "Format output CHINH XAC theo JSON sau, khong them gi ngoai JSON:",
+        '{"summary":"1-2 cau tong quan","highlights":[{"type":"positive|warning|neutral","text":"insight ngan"}],"platformInsight":"1 cau","roleInsight":"1 cau","weeklyTrend":"1 cau","recommendations":["action 1","action 2"]}',
+        "Highlights toi da 4. Recommendations toi da 3. Ngan gon, khong sao rong."
+      ].join(" ")
+    },
+    {
+      role: "user",
+      content: "Data tuyen dung tuan " + summary.generatedWeek + ": " + JSON.stringify(summary)
+    }
+  ]
+};
+
+var res = await fetch("https://api.openai.com/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    "Content-Type":  "application/json",
+    "Authorization": "Bearer " + (localStorage.getItem("fl_openai_key") || _CS_OPENAI_KEY)
+  },
+  body: JSON.stringify(payload)
+});
 
   var userPrompt = "Đây là data tuyển dụng tuần " + summary.generatedWeek + ":\n" + JSON.stringify(summary, null, 2);
 
