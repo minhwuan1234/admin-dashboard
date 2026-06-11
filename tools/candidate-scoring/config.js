@@ -101,8 +101,7 @@ async function _csCallOpenAI(summary) {
     method: "POST",
     headers: {
       "Content-Type":  "application/json",
-      "Authorization": "Bearer " + _CS_OPENAI_KEY
-    },
+      "Authorization": "Bearer " + (localStorage.getItem("fl_openai_key") || _CS_OPENAI_KEY)    },
     body: JSON.stringify({
       model:       _CS_OPENAI_MODEL,
       max_tokens:  800,
