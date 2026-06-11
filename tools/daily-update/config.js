@@ -5,8 +5,8 @@
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 /* ── OpenAI config (dùng chung key với candidate-scoring) ── */
-var _DU_OPENAI_KEY = "";
-var _DU_OPENAI_MODEL = "gpt-5.5";
+var _DU_OPENAI_KEY   = "sk-PASTE_YOUR_KEY_HERE";
+var _DU_OPENAI_MODEL = "gpt-4o-mini";
 
 /* ── ISO week helper ── */
 function _duGetISOWeek(date) {
@@ -78,53 +78,30 @@ function _duAggregate(data) {
 }
 
 /* ── Call OpenAI API ── */
-var payload = {
-  model:       _DU_OPENAI_MODEL,
-  max_tokens:  800,
-  temperature: 0.4,
-  messages: [
-    {
-      role: "system",
-      content: [
-        "Ban la PM assistant cua F.Learning Studio.",
-        "Nhan vao data standup hang ngay cua team, tra ve insight ngan gon, actionable bang tieng Viet.",
-        "Format output CHINH XAC theo JSON sau, khong them gi ngoai JSON:",
-        '{"summary":"1-2 cau tong quan","highlights":[{"type":"positive|warning|neutral","text":"insight ngan"}],"consistencyInsight":"1 cau","taskInsight":"1 cau","weeklyTrend":"1 cau","recommendations":["action 1","action 2"]}',
-        "Neu co member missing, de cap nhung khong neu ten cu the. Highlights toi da 4. Recommendations toi da 3."
-      ].join(" ")
-    },
-    {
-      role: "user",
-      content: "Data standup tuan " + summary.generatedWeek + ": " + JSON.stringify(summary)
-    }
-  ]
-};
-
-var res = await fetch("https://api.openai.com/v1/chat/completions", {
-  method: "POST",
-  headers: {
-    "Content-Type":  "application/json",
-    "Authorization": "Bearer " + (localStorage.getItem("fl_openai_key") || _DU_OPENAI_KEY)
-  },
-  body: JSON.stringify(payload)
-});
-
-  var userPrompt = "Data standup tuần " + summary.generatedWeek + ":\n" + JSON.stringify(summary, null, 2);
+async function _duCallOpenAI(summary) {
+  var payload = {
+    model:       _DU_OPENAI_MODEL,
+    max_tokens:  800,
+    temperature: 0.4,
+    messages: [
+      {
+        role: "system",
+        content: "Ban la PM assistant cua F.Learning Studio. Nhan vao data standup hang ngay cua team, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"consistencyInsight\":\"string\",\"taskInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"]}. Neu co member missing, de cap nhung khong neu ten. Highlights toi da 4. Recommendations toi da 3."
+      },
+      {
+        role: "user",
+        content: "Data standup tuan " + summary.generatedWeek + ": " + JSON.stringify(summary)
+      }
+    ]
+  };
 
   var res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type":  "application/json",
-      "Authorization": "Bearer " + (localStorage.getItem("fl_openai_key") || _DU_OPENAI_KEY)    },
-    body: JSON.stringify({
-      model:       _DU_OPENAI_MODEL,
-      max_tokens:  800,
-      temperature: 0.4,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user",   content: userPrompt   }
-      ]
-    })
+      "Authorization": "Bearer " + (localStorage.getItem("fl_openai_key") || _DU_OPENAI_KEY)
+    },
+    body: JSON.stringify(payload)
   });
 
   if (!res.ok) throw new Error("OpenAI HTTP " + res.status);
