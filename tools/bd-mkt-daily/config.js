@@ -1,4 +1,315 @@
+/* ══════════════════════════════════════════════════════════════
+   TOOL CONFIG: BD-MKT Daily Report
+   ══════════════════════════════════════════════════════════════ */
+
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
+
+/* ── OpenAI config ── */
+var _BD_OPENAI_KEY   = "sk-PASTE_YOUR_KEY_HERE";
+var _BD_OPENAI_MODEL = "gpt-4o-mini";
+
+/* ── ISO week helper ── */
+function _bdGetISOWeek(date) {
+  var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  var day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  var week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return d.getUTCFullYear() + "-W" + String(week).padStart(2, "0");
+}
+
+/* ── Aggregate BD-MKT data → summary payload ── */
+function _bdAggregate(data) {
+  var week    = _bdGetISOWeek(new Date());
+  var allRows = data.allRows || [];
+
+  /* Last 7 days: morning/evening rate per day */
+  var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+  var last7 = [];
+  for (var i = 6; i >= 0; i--) {
+    var d = new Date(now); d.setDate(d.getDate() - i);
+    var ds = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+    var dayRows = allRows.filter(function(r) { return r["Date"] === ds; });
+    last7.push({
+      date:    ds,
+      morning: dayRows.filter(function(r) { return r["Type"] === "morning"; }).length,
+      evening: dayRows.filter(function(r) { return r["Type"] === "evening"; }).length,
+      total:   data.totalMembers
+    });
+  }
+
+  /* Member consistency — bao nhiêu ngày submit cả 2 trong 7 ngày qua */
+  var memberConsistency = {};
+  (data.memberNames || []).forEach(function(name) {
+    var bothDays = last7.filter(function(day) {
+      var dayRows = allRows.filter(function(r) { return r["Date"] === day.date && r["Member"] === name; });
+      return dayRows.some(function(r) { return r["Type"] === "morning"; }) &&
+             dayRows.some(function(r) { return r["Type"] === "evening"; });
+    }).length;
+    var morningOnly = last7.filter(function(day) {
+      var dayRows = allRows.filter(function(r) { return r["Date"] === day.date && r["Member"] === name; });
+      return dayRows.some(function(r) { return r["Type"] === "morning"; }) &&
+            !dayRows.some(function(r) { return r["Type"] === "evening"; });
+    }).length;
+    memberConsistency[name] = { bothDays: bothDays, morningOnly: morningOnly, outOf: 7 };
+  });
+
+  /* Plan vs actual gap — so sánh expected time vs actual time spent */
+  var planActualGap = { onTrack: 0, over: 0, under: 0, noData: 0 };
+  allRows.forEach(function(r) {
+    if (r["Type"] !== "evening") return;
+    for (var i = 1; i <= 2; i++) {
+      var expected = parseFloat(r["Expected " + i]);
+      var actual   = parseFloat(r["TimeSpent " + i]);
+      if (isNaN(expected) || isNaN(actual)) { planActualGap.noData++; continue; }
+      var ratio = actual / expected;
+      if (ratio > 1.2)      planActualGap.over++;
+      else if (ratio < 0.8) planActualGap.under++;
+      else                  planActualGap.onTrack++;
+    }
+  });
+
+  /* Today stats */
+  var todayMissingMorning = (data.memberNames || []).filter(function(n) { return !data.todayMorning[n]; });
+  var todayMissingEvening = (data.memberNames || []).filter(function(n) { return !data.todayEvening[n]; });
+  var bothToday = (data.memberNames || []).filter(function(n) { return data.todayMorning[n] && data.todayEvening[n]; }).length;
+
+  /* Avg rates last 7 days */
+  var avgMorning = last7.length > 0
+    ? Math.round(last7.reduce(function(acc, d) { return acc + (d.total > 0 ? d.morning / d.total * 100 : 0); }, 0) / last7.length)
+    : 0;
+  var avgEvening = last7.length > 0
+    ? Math.round(last7.reduce(function(acc, d) { return acc + (d.total > 0 ? d.evening / d.total * 100 : 0); }, 0) / last7.length)
+    : 0;
+
+  return {
+    generatedWeek: week,
+    today: {
+      morningRate:    data.morningRate,
+      eveningRate:    data.eveningRate,
+      morningCount:   data.morningCount,
+      eveningCount:   data.eveningCount,
+      bothCount:      bothToday,
+      totalMembers:   data.totalMembers,
+      missingMorning: todayMissingMorning.length,
+      missingEvening: todayMissingEvening.length
+    },
+    last7Days:         last7,
+    avgMorningLast7:   avgMorning,
+    avgEveningLast7:   avgEvening,
+    memberConsistency: memberConsistency,
+    planActualGap:     planActualGap
+  };
+}
+
+/* ── Call OpenAI API ── */
+async function _bdCallOpenAI(summary) {
+  var systemPrompt =
+    "Bạn là PM assistant của F.Learning Studio, phụ trách team BD-MKT. " +
+    "Nhận vào data daily report (morning plan + evening actual) của team, " +
+    "trả về insight ngắn gọn, actionable bằng tiếng Việt. " +
+    "Format output CHÍNH XÁC theo JSON sau, không thêm gì ngoài JSON:\n" +
+    "{\n" +
+    "  \"summary\": \"1-2 câu tổng quan hôm nay\",\n" +
+    "  \"highlights\": [\n" +
+    "    {\"type\": \"positive|warning|neutral\", \"text\": \"insight ngắn\"},\n" +
+    "    ...\n" +
+    "  ],\n" +
+    "  \"morningEveningGap\": \"1 câu nhận xét về chênh lệch giữa morning và evening submit rate\",\n" +
+    "  \"planActualInsight\": \"1 câu về plan vs actual execution (over/under estimate)\",\n" +
+    "  \"consistencyInsight\": \"1 câu về consistency submit cả 2 buổi trong tuần\",\n" +
+    "  \"weeklyTrend\": \"1 câu xu hướng so với tuần trước\",\n" +
+    "  \"recommendations\": [\n" +
+    "    \"action cụ thể 1\",\n" +
+    "    \"action cụ thể 2\"\n" +
+    "  ]\n" +
+    "}\n" +
+    "Highlights tối đa 4. Recommendations tối đa 3. Không nêu tên cá nhân. Ngắn gọn, không sáo rỗng.";
+
+  var userPrompt = "Data BD-MKT daily report tuần " + summary.generatedWeek + ":\n" + JSON.stringify(summary, null, 2);
+
+  var res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type":  "application/json",
+      "Authorization": "Bearer " + _BD_OPENAI_KEY
+    },
+    body: JSON.stringify({
+      model:       _BD_OPENAI_MODEL,
+      max_tokens:  800,
+      temperature: 0.4,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user",   content: userPrompt   }
+      ]
+    })
+  });
+
+  if (!res.ok) throw new Error("OpenAI HTTP " + res.status);
+  var json = await res.json();
+  var raw = json.choices[0].message.content.trim()
+    .replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+  return JSON.parse(raw);
+}
+
+function _bdCacheKey() {
+  return "bd_insight_" + _bdGetISOWeek(new Date());
+}
+
+/* ── Render insight panel HTML ── */
+function _bdRenderInsightHTML(insight, week, isCache) {
+  var typeIcon  = { positive: "ti-trending-up", warning: "ti-alert-triangle", neutral: "ti-info-circle" };
+  var typeColor = { positive: "var(--green)", warning: "var(--accent)", neutral: "var(--blue)" };
+  var typeBg    = { positive: "var(--green-dim)", warning: "var(--accent-dim)", neutral: "var(--blue-dim)" };
+
+  var highlightRows = (insight.highlights || []).map(function(h) {
+    var ic = typeIcon[h.type]  || "ti-info-circle";
+    var co = typeColor[h.type] || "var(--text-muted)";
+    var bg = typeBg[h.type]   || "var(--bg-hover)";
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:' + bg + ';border-radius:var(--radius-sm);margin-bottom:8px">' +
+      '<i class="ti ' + ic + '" style="font-size:14px;color:' + co + ';flex-shrink:0;margin-top:1px"></i>' +
+      '<span style="font-size:13px;color:var(--text-primary);line-height:1.55">' + h.text + '</span>' +
+    '</div>';
+  }).join("");
+
+  var recRows = (insight.recommendations || []).map(function(r, i) {
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
+      '<span style="width:20px;height:20px;border-radius:50%;background:var(--accent);color:#000;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">' + (i+1) + '</span>' +
+      '<span style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + r + '</span>' +
+    '</div>';
+  }).join("");
+
+  var cacheNote = isCache
+    ? '<span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">Cache ' + week + ' · <button id="bd-insight-regen" style="background:none;border:none;color:var(--accent);font-size:10px;font-family:var(--font-mono);cursor:pointer;padding:0">↻ Regenerate</button></span>'
+    : '<span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">Generated ' + week + '</span>';
+
+  return '<div style="display:flex;flex-direction:column;gap:0;height:100%">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 20px 16px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+        '<div style="width:32px;height:32px;border-radius:var(--radius-sm);background:var(--accent-dim);display:flex;align-items:center;justify-content:center;color:var(--accent)"><i class="ti ti-sparkles" style="font-size:16px"></i></div>' +
+        '<div><p style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">AI Insight</p>' + cacheNote + '</div>' +
+      '</div>' +
+      '<button id="bd-insight-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
+    '</div>' +
+    '<div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">' +
+      '<div>' +
+        '<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:8px">Tổng quan</p>' +
+        '<p style="font-size:14px;color:var(--text-primary);line-height:1.65;background:var(--bg-hover);padding:12px 14px;border-radius:var(--radius-sm)">' + insight.summary + '</p>' +
+      '</div>' +
+      (highlightRows ? '<div><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:8px">Điểm đáng chú ý</p>' + highlightRows + '</div>' : '') +
+      '<div style="display:flex;flex-direction:column;gap:8px">' +
+        '<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted)">Phân tích</p>' +
+        '<div style="padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm)">' +
+          '<p style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Morning vs Evening</p>' +
+          '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + insight.morningEveningGap + '</p>' +
+        '</div>' +
+        '<div style="padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm)">' +
+          '<p style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Plan vs Actual</p>' +
+          '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + insight.planActualInsight + '</p>' +
+        '</div>' +
+        '<div style="padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm)">' +
+          '<p style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Consistency</p>' +
+          '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + insight.consistencyInsight + '</p>' +
+        '</div>' +
+        '<div style="padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm)">' +
+          '<p style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Xu hướng tuần</p>' +
+          '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + insight.weeklyTrend + '</p>' +
+        '</div>' +
+      '</div>' +
+      (recRows ? '<div><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:10px">Khuyến nghị</p>' + recRows + '</div>' : '') +
+    '</div>' +
+  '</div>';
+}
+
+function _bdInsightLoadingHTML() {
+  return '<div style="display:flex;flex-direction:column;gap:0;height:100%">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 20px 16px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+        '<div style="width:32px;height:32px;border-radius:var(--radius-sm);background:var(--accent-dim);display:flex;align-items:center;justify-content:center;color:var(--accent)"><i class="ti ti-sparkles" style="font-size:16px"></i></div>' +
+        '<div><p style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">AI Insight</p><span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">Đang phân tích...</span></div>' +
+      '</div>' +
+      '<button id="bd-insight-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
+    '</div>' +
+    '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:40px">' +
+      '<div style="width:36px;height:36px;border:2px solid var(--border-strong);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div>' +
+      '<p style="font-size:14px;color:var(--text-primary)">Đang gọi AI...</p>' +
+    '</div>' +
+  '</div>';
+}
+
+function _bdInsightErrorHTML(msg) {
+  return '<div style="display:flex;flex-direction:column;gap:0;height:100%">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 20px 16px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+        '<div style="width:32px;height:32px;border-radius:var(--radius-sm);background:var(--red-dim);display:flex;align-items:center;justify-content:center;color:var(--red)"><i class="ti ti-alert-circle" style="font-size:16px"></i></div>' +
+        '<p style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">AI Insight</p>' +
+      '</div>' +
+      '<button id="bd-insight-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
+    '</div>' +
+    '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:40px;text-align:center">' +
+      '<i class="ti ti-wifi-off" style="font-size:36px;color:var(--text-muted)"></i>' +
+      '<p style="font-size:14px;color:var(--text-primary)">Không thể tạo insight</p>' +
+      '<p style="font-size:12px;color:var(--text-muted)">' + msg + '</p>' +
+      '<button id="bd-insight-retry" style="margin-top:8px;padding:8px 18px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--radius-sm);color:var(--accent);font-size:13px;cursor:pointer">↻ Thử lại</button>' +
+    '</div>' +
+  '</div>';
+}
+
+async function _bdOpenInsightPanel(data, forceRegen) {
+  var panel   = document.getElementById("bd-insight-panel");
+  var overlay = document.getElementById("bd-insight-overlay");
+  if (!panel) return;
+
+  overlay.style.display = "block";
+  panel.classList.add("open");
+
+  var week     = _bdGetISOWeek(new Date());
+  var cacheKey = _bdCacheKey();
+  var cached   = null;
+
+  if (!forceRegen) {
+    try { cached = JSON.parse(localStorage.getItem(cacheKey)); } catch(e) {}
+  }
+
+  if (cached) {
+    panel.innerHTML = _bdRenderInsightHTML(cached, week, true);
+    _bdBindPanelEvents(data, panel, overlay);
+    return;
+  }
+
+  panel.innerHTML = _bdInsightLoadingHTML();
+  _bdBindCloseEvent(panel, overlay);
+
+  try {
+    var summary = _bdAggregate(data);
+    var insight = await _bdCallOpenAI(summary);
+    localStorage.setItem(cacheKey, JSON.stringify(insight));
+    panel.innerHTML = _bdRenderInsightHTML(insight, week, false);
+    _bdBindPanelEvents(data, panel, overlay);
+  } catch(err) {
+    panel.innerHTML = _bdInsightErrorHTML(err.message);
+    _bdBindCloseEvent(panel, overlay);
+    var retryBtn = document.getElementById("bd-insight-retry");
+    if (retryBtn) retryBtn.addEventListener("click", function() { _bdOpenInsightPanel(data, true); });
+  }
+}
+
+function _bdBindCloseEvent(panel, overlay) {
+  var closeBtn = document.getElementById("bd-insight-close");
+  if (closeBtn) closeBtn.addEventListener("click", function() { _bdClosePanel(panel, overlay); });
+  overlay.onclick = function() { _bdClosePanel(panel, overlay); };
+}
+function _bdBindPanelEvents(data, panel, overlay) {
+  _bdBindCloseEvent(panel, overlay);
+  var regenBtn = document.getElementById("bd-insight-regen");
+  if (regenBtn) regenBtn.addEventListener("click", function() { _bdOpenInsightPanel(data, true); });
+}
+function _bdClosePanel(panel, overlay) {
+  panel.classList.remove("open");
+  overlay.style.display = "none";
+}
+
+/* ══════════════════════════════════════════════════════════════ */
 
 window.TOOL_REGISTRY.push({
   id:          "bd-mkt-daily",
@@ -15,9 +326,6 @@ window.TOOL_REGISTRY.push({
     "ou_12548715eba533527311e76207c95ce4": "Minh Anh"
   },
 
-  /* ══════════════════════════════
-     FETCH DATA — CSV truc tiep tu Sheets
-     ══════════════════════════════ */
   fetchData: async function(utils) {
     var SHEET_ID   = "1j-18C2hBM8Lvxz-sgDtLQ8KSeFTjxAyJ1CUGXiOcvvQ";
     var SHEET_NAME = "BD-MKT-L&D-Daily Report";
@@ -38,15 +346,13 @@ window.TOOL_REGISTRY.push({
         else if (c===',' && !inQ) { res.push(cur); cur=""; }
         else cur+=c;
       }
-      res.push(cur);
-      return res;
+      res.push(cur); return res;
     }
 
     var lines   = csv.split("\n").filter(function(l) { return l.trim(); });
     var headers = splitCSVLine(lines[0]);
     var rows    = lines.slice(1).map(function(line) {
-      var vals = splitCSVLine(line);
-      var obj  = {};
+      var vals = splitCSVLine(line), obj = {};
       headers.forEach(function(h, i) { obj[h.trim()] = (vals[i] || "").trim(); });
       return obj;
     }).filter(function(r) { return r["Date"] && r["Member"]; });
@@ -55,37 +361,18 @@ window.TOOL_REGISTRY.push({
     var totalMembers = memberNames.length;
 
     var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
-    var todayStr = now.getFullYear() + "-" +
-      String(now.getMonth()+1).padStart(2,"0") + "-" +
-      String(now.getDate()).padStart(2,"0");
+    var todayStr = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0") + "-" + String(now.getDate()).padStart(2,"0");
 
     var todayRows    = rows.filter(function(r) { return r["Date"] === todayStr; });
-    var todayMorning = {};
-    var todayEvening = {};
+    var todayMorning = {}, todayEvening = {};
 
     todayRows.forEach(function(r) {
-      var member = r["Member"];
-      var type   = r["Type"];
-      var tasks  = [];
+      var member = r["Member"], type = r["Type"], tasks = [];
       for (var i = 1; i <= 2; i++) {
-        var title = r["Task " + i];
-        if (!title) continue;
-        tasks.push({
-          title:        title,
-          output:       r["Output "   + i] || "—",
-          expectedTime: r["Expected " + i] || "—",
-          progress:     r["Progress " + i] || "—",
-          timeSpent:    r["TimeSpent "+ i] || "—",
-        });
+        var title = r["Task " + i]; if (!title) continue;
+        tasks.push({ title: title, output: r["Output " + i] || "—", expectedTime: r["Expected " + i] || "—", progress: r["Progress " + i] || "—", timeSpent: r["TimeSpent "+ i] || "—" });
       }
-      var entry = {
-        memberName:   member,
-        tasks:        tasks,
-        submittedAt:  r["Submitted At"]  || "",
-        blockers:     r["Blockers"]      || "",
-        tomorrowPlan: r["Tomorrow Plan"] || "",
-        weeklyGoal:   r["Weekly Goal"]   || "",
-      };
+      var entry = { memberName: member, tasks: tasks, submittedAt: r["Submitted At"] || "", blockers: r["Blockers"] || "", tomorrowPlan: r["Tomorrow Plan"] || "", weeklyGoal: r["Weekly Goal"] || "" };
       if (type === "morning") todayMorning[member] = entry;
       if (type === "evening") todayEvening[member] = entry;
     });
@@ -97,7 +384,6 @@ window.TOOL_REGISTRY.push({
       var lbl = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
       days.push({ dateStr: ds, label: lbl, morning: 0, evening: 0 });
     }
-
     rows.forEach(function(r) {
       var day = days.find(function(d) { return d.dateStr === r["Date"]; });
       if (!day) return;
@@ -109,25 +395,15 @@ window.TOOL_REGISTRY.push({
     var eveningCount = Object.keys(todayEvening).length;
 
     return {
-      totalMembers: totalMembers,
-      morningCount: morningCount,
-      eveningCount: eveningCount,
-      morningRate:  totalMembers > 0 ? Math.round(morningCount / totalMembers * 100) : 0,
-      eveningRate:  totalMembers > 0 ? Math.round(eveningCount / totalMembers * 100) : 0,
-      memberNames:  memberNames,
-      memberIds:    Object.keys(MEMBERS),
-      members:      MEMBERS,
-      todayMorning: todayMorning,
-      todayEvening: todayEvening,
-      chartDays:    days,
-      todayStr:     todayStr,
-      allRows:      rows,
+      totalMembers: totalMembers, morningCount: morningCount, eveningCount: eveningCount,
+      morningRate: totalMembers > 0 ? Math.round(morningCount / totalMembers * 100) : 0,
+      eveningRate: totalMembers > 0 ? Math.round(eveningCount / totalMembers * 100) : 0,
+      memberNames: memberNames, memberIds: Object.keys(MEMBERS), members: MEMBERS,
+      todayMorning: todayMorning, todayEvening: todayEvening,
+      chartDays: days, todayStr: todayStr, allRows: rows,
     };
   },
 
-  /* ══════════════════════════════
-     RENDER CARD
-     ══════════════════════════════ */
   renderCard: function(data) {
     var mc = data.morningRate >= 80 ? "green" : data.morningRate >= 50 ? "amber" : "red";
     var ec = data.eveningRate >= 80 ? "green" : data.eveningRate >= 50 ? "amber" : "red";
@@ -135,21 +411,10 @@ window.TOOL_REGISTRY.push({
       '<div class="tool-metric"><span class="metric-value ' + mc + '">' + data.morningCount + '/' + data.totalMembers + '</span><span class="metric-label">☀️ Morning</span></div>' +
       '<div class="tool-metric"><span class="metric-value ' + ec + '">' + data.eveningCount + '/' + data.totalMembers + '</span><span class="metric-label">🌙 Evening</span></div>' +
       '</div>' +
-      '<div class="mini-bar-wrap" style="margin-top:8px">' +
-        '<span style="font-size:10px;color:var(--text-muted);width:52px">Morning</span>' +
-        '<div class="mini-bar"><div class="mini-bar-fill ' + (data.morningRate < 80 ? data.morningRate >= 50 ? "amber" : "red" : "") + '" style="width:' + data.morningRate + '%"></div></div>' +
-        '<span class="mini-bar-pct">' + data.morningRate + '%</span>' +
-      '</div>' +
-      '<div class="mini-bar-wrap" style="margin-top:4px">' +
-        '<span style="font-size:10px;color:var(--text-muted);width:52px">Evening</span>' +
-        '<div class="mini-bar"><div class="mini-bar-fill ' + (data.eveningRate < 80 ? data.eveningRate >= 50 ? "amber" : "red" : "") + '" style="width:' + data.eveningRate + '%"></div></div>' +
-        '<span class="mini-bar-pct">' + data.eveningRate + '%</span>' +
-      '</div>';
+      '<div class="mini-bar-wrap" style="margin-top:8px"><span style="font-size:10px;color:var(--text-muted);width:52px">Morning</span><div class="mini-bar"><div class="mini-bar-fill ' + (data.morningRate < 80 ? data.morningRate >= 50 ? "amber" : "red" : "") + '" style="width:' + data.morningRate + '%"></div></div><span class="mini-bar-pct">' + data.morningRate + '%</span></div>' +
+      '<div class="mini-bar-wrap" style="margin-top:4px"><span style="font-size:10px;color:var(--text-muted);width:52px">Evening</span><div class="mini-bar"><div class="mini-bar-fill ' + (data.eveningRate < 80 ? data.eveningRate >= 50 ? "amber" : "red" : "") + '" style="width:' + data.eveningRate + '%"></div></div><span class="mini-bar-pct">' + data.eveningRate + '%</span></div>';
   },
 
-  /* ══════════════════════════════
-     RENDER DETAIL
-     ══════════════════════════════ */
   renderDetail: function(data, utils) {
     if (!data || data._error) return '<div class="state-error"><i class="ti ti-alert-circle"></i> Khong the tai data</div>';
     if (data._loading) return '<div class="state-loading"><div class="spinner"></div><p>Dang tai...</p></div>';
@@ -160,13 +425,17 @@ window.TOOL_REGISTRY.push({
         '<button class="tab-btn" data-tab="info"><i class="ti ti-info-circle"></i> Thong tin tool</button>' +
       '</div>' +
       '<div id="tab-tracking" class="tab-pane"></div>' +
-      '<div id="tab-info" class="tab-pane" style="display:none"></div>';
+      '<div id="tab-info" class="tab-pane" style="display:none"></div>' +
+      /* Insight panel + overlay + FAB */
+      '<div id="bd-insight-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:199;backdrop-filter:blur(2px)"></div>' +
+      '<div id="bd-insight-panel" class="cs-insight-panel"></div>' +
+      '<button id="bd-insight-fab" class="cs-insight-fab" title="Xem AI Insight">' +
+        '<i class="ti ti-sparkles"></i><span>Insight</span>' +
+      '</button>';
 
     var mc = data.morningRate >= 80 ? "green" : data.morningRate >= 50 ? "amber" : "red";
     var ec = data.eveningRate >= 80 ? "green" : data.eveningRate >= 50 ? "amber" : "red";
-    var bothCount = data.memberNames.filter(function(name) {
-      return data.todayMorning[name] && data.todayEvening[name];
-    }).length;
+    var bothCount = data.memberNames.filter(function(name) { return data.todayMorning[name] && data.todayEvening[name]; }).length;
 
     var statsHTML =
       '<div class="detail-stats">' +
@@ -178,6 +447,7 @@ window.TOOL_REGISTRY.push({
     window._bdChartDays = data.chartDays;
     window._bdTotal     = data.totalMembers;
     window._bdAllRows   = data.allRows;
+    window._bdData      = data; /* store for insight panel */
 
     window._buildBDChart = function(n) {
       var container = document.getElementById("bd-chart-container");
@@ -217,14 +487,8 @@ window.TOOL_REGISTRY.push({
         document.body.appendChild(tip);
       }
       container.querySelectorAll(".chart-col").forEach(function(col) {
-        col.addEventListener("mouseenter", function() {
-          tip.innerHTML = (col.dataset.tip || "").replace(/&quot;/g, '"');
-          tip.style.display = "block";
-        });
-        col.addEventListener("mousemove", function(e) {
-          tip.style.left = (e.clientX - tip.offsetWidth / 2) + "px";
-          tip.style.top  = (e.clientY - tip.offsetHeight - 14) + "px";
-        });
+        col.addEventListener("mouseenter", function() { tip.innerHTML = (col.dataset.tip || "").replace(/&quot;/g, '"'); tip.style.display = "block"; });
+        col.addEventListener("mousemove",  function(e) { tip.style.left = (e.clientX - tip.offsetWidth / 2) + "px"; tip.style.top = (e.clientY - tip.offsetHeight - 14) + "px"; });
         col.addEventListener("mouseleave", function() { tip.style.display = "none"; });
 
         if (parseInt(col.dataset.morning) > 0 || parseInt(col.dataset.evening) > 0) {
@@ -234,15 +498,13 @@ window.TOOL_REGISTRY.push({
             var detail  = document.getElementById("bd-day-detail");
             if (!detail) return;
             if (detail.dataset.activeDate === dateStr && detail.style.display !== "none") {
-              detail.style.display = "none";
-              detail.dataset.activeDate = "";
+              detail.style.display = "none"; detail.dataset.activeDate = "";
               container.querySelectorAll(".chart-col--active").forEach(function(c) { c.classList.remove("chart-col--active"); });
               return;
             }
             container.querySelectorAll(".chart-col--active").forEach(function(c) { c.classList.remove("chart-col--active"); });
             col.classList.add("chart-col--active");
-            detail.dataset.activeDate = dateStr;
-            detail.style.display = "block";
+            detail.dataset.activeDate = dateStr; detail.style.display = "block";
             window._fetchBDDay(dateStr);
           });
         }
@@ -252,16 +514,11 @@ window.TOOL_REGISTRY.push({
     window._fetchBDDay = function(dateStr) {
       var detail = document.getElementById("bd-day-detail");
       if (!detail) return;
-
-      var rows = (window._bdAllRows || []).filter(function(r) {
-        return r["Date"] === dateStr;
-      });
-
+      var rows = (window._bdAllRows || []).filter(function(r) { return r["Date"] === dateStr; });
       if (!rows.length) {
         detail.innerHTML = '<div class="state-empty" style="padding:24px"><i class="ti ti-inbox" style="font-size:28px"></i><p>Chua co du lieu cho ngay ' + dateStr + '</p></div>';
         return;
       }
-
       var byMember = {};
       rows.forEach(function(r) {
         var m = r["Member"];
@@ -269,21 +526,17 @@ window.TOOL_REGISTRY.push({
         if (r["Type"] === "morning") byMember[m].morning = r;
         if (r["Type"] === "evening") byMember[m].evening = r;
       });
-
       var memberRows = Object.entries(byMember).map(function(entry) {
-        var name = entry[0];
-        var d    = entry[1];
-
+        var name = entry[0], d = entry[1];
         var mCell = d.morning
           ? '<span class="status-pill submitted" style="font-size:10px">☀️ Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + (d.morning["Submitted At"] || "") + '</span>'
           : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
         var eCell = d.evening
           ? '<span class="status-pill submitted" style="font-size:10px">🌙 Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + (d.evening["Submitted At"] || "") + '</span>'
           : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
-
         var taskCols = "";
         for (var i = 1; i <= 2; i++) {
-          var title = d.morning ? (d.morning["Task "     + i] || "") : "";
+          var title = d.morning ? (d.morning["Task " + i] || "") : "";
           var plan  = d.morning ? (d.morning["Expected " + i] || "—") : "—";
           var prog  = d.evening ? (d.evening["Progress " + i] || "") : "";
           var time  = d.evening ? (d.evening["TimeSpent "+ i] || "—") : "—";
@@ -295,29 +548,14 @@ window.TOOL_REGISTRY.push({
             '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
             '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">' + time + '</td>';
         }
-
-        return '<tr>' +
-          '<td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name + '</td>' +
-          '<td style="vertical-align:middle">' + mCell + '</td>' +
-          '<td style="vertical-align:middle">' + eCell + '</td>' +
-          taskCols +
-        '</tr>';
+        return '<tr><td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name + '</td><td style="vertical-align:middle">' + mCell + '</td><td style="vertical-align:middle">' + eCell + '</td>' + taskCols + '</tr>';
       }).join("");
-
       var mCount = Object.values(byMember).filter(function(d) { return d.morning; }).length;
       var eCount = Object.values(byMember).filter(function(d) { return d.evening; }).length;
-
       detail.innerHTML =
         '<div class="members-section" style="overflow-x:auto">' +
-          '<div class="section-header">' +
-            '<span class="section-title">Chi tiet ngay ' + dateStr + '</span>' +
-            '<span class="section-meta">' + mCount + ' morning · ' + eCount + ' evening</span>' +
-          '</div>' +
-          '<table class="members-table" style="min-width:100%;table-layout:auto"><thead><tr>' +
-            '<th>Thanh vien</th><th>Morning</th><th>Evening</th>' +
-            '<th>Task 1</th><th>Plan</th><th>Actual</th><th>Time</th>' +
-            '<th>Task 2</th><th>Plan</th><th>Actual</th><th>Time</th>' +
-          '</tr></thead><tbody>' + memberRows + '</tbody></table>' +
+          '<div class="section-header"><span class="section-title">Chi tiet ngay ' + dateStr + '</span><span class="section-meta">' + mCount + ' morning · ' + eCount + ' evening</span></div>' +
+          '<table class="members-table" style="min-width:100%;table-layout:auto"><thead><tr><th>Thanh vien</th><th>Morning</th><th>Evening</th><th>Task 1</th><th>Plan</th><th>Actual</th><th>Time</th><th>Task 2</th><th>Plan</th><th>Actual</th><th>Time</th></tr></thead><tbody>' + memberRows + '</tbody></table>' +
         '</div>';
     };
 
@@ -350,21 +588,16 @@ window.TOOL_REGISTRY.push({
     maxTasks = Math.max(maxTasks, 1);
 
     var thHeaders = '<th>Thanh vien</th><th>Morning</th><th>Evening</th>';
-    for (var ti = 0; ti < maxTasks; ti++) {
-      thHeaders += '<th>Task ' + (ti+1) + '</th><th>Plan</th><th>Actual</th><th>Time</th>';
-    }
+    for (var ti = 0; ti < maxTasks; ti++) thHeaders += '<th>Task ' + (ti+1) + '</th><th>Plan</th><th>Actual</th><th>Time</th>';
 
     var memberRows = data.memberNames.map(function(name) {
-      var morning = data.todayMorning[name];
-      var evening = data.todayEvening[name];
-
+      var morning = data.todayMorning[name], evening = data.todayEvening[name];
       var mCell = morning
         ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">☀️ Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + (morning.submittedAt || "") + '</span>'
         : '<span class="status-pill missing" style="font-size:10px;white-space:nowrap">✗ Chua</span>';
       var eCell = evening
         ? '<span class="status-pill submitted" style="font-size:10px;white-space:nowrap">🌙 Submit</span><br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">' + (evening.submittedAt || "") + '</span>'
         : '<span class="status-pill missing" style="font-size:10px;white-space:nowrap">✗ Chua</span>';
-
       var taskCols = "";
       for (var ti = 0; ti < maxTasks; ti++) {
         var t      = morning && morning.tasks ? morning.tasks[ti] : null;
@@ -378,53 +611,22 @@ window.TOOL_REGISTRY.push({
           '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
           '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">'                             + (time || "—")                     + '</td>';
       }
-
-      return '<tr>' +
-        '<td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name  + '</td>' +
-        '<td style="vertical-align:middle">'                                    + mCell + '</td>' +
-        '<td style="vertical-align:middle">'                                    + eCell + '</td>' +
-        taskCols +
-      '</tr>';
+      return '<tr><td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name + '</td><td style="vertical-align:middle">' + mCell + '</td><td style="vertical-align:middle">' + eCell + '</td>' + taskCols + '</tr>';
     }).join("");
 
     var membersHTML =
       '<div class="members-section" style="overflow-x:auto">' +
         '<div class="section-header"><span class="section-title">Trang thai hom nay</span><span class="section-meta">' + data.todayStr + '</span></div>' +
-        '<table class="members-table" style="min-width:100%;table-layout:auto"><thead><tr>' +
-          thHeaders +
-        '</tr></thead><tbody>' + memberRows + '</tbody></table>' +
+        '<table class="members-table" style="min-width:100%;table-layout:auto"><thead><tr>' + thHeaders + '</tr></thead><tbody>' + memberRows + '</tbody></table>' +
       '</div>';
 
     var infoHTML =
       '<div class="tool-info-page">' +
-        '<div class="tool-info-hero">' +
-          '<div class="tool-info-icon"><i class="ti ti-sun-moon"></i></div>' +
-          '<div>' +
-            '<h2 class="tool-info-name">BD-MKT Daily Report</h2>' +
-            '<p class="tool-info-tagline">Tracking morning/evening submit va plan vs actual cua team BD-MKT.</p>' +
-          '</div>' +
-        '</div>' +
-        '<div class="tool-info-section">' +
-          '<div class="tool-info-section-title"><i class="ti ti-info-circle"></i> Mo ta</div>' +
-          '<p class="tool-info-text">Moi ngay team BD-MKT dien 2 form: Morning (plan task + output du kien) va Evening (actual progress). Dashboard tong hop ti le submit va so sanh plan vs actual.</p>' +
-        '</div>' +
+        '<div class="tool-info-hero"><div class="tool-info-icon"><i class="ti ti-sun-moon"></i></div><div><h2 class="tool-info-name">BD-MKT Daily Report</h2><p class="tool-info-tagline">Tracking morning/evening submit va plan vs actual cua team BD-MKT.</p></div></div>' +
+        '<div class="tool-info-section"><div class="tool-info-section-title"><i class="ti ti-info-circle"></i> Mo ta</div><p class="tool-info-text">Moi ngay team BD-MKT dien 2 form: Morning (plan task + output du kien) va Evening (actual progress). Dashboard tong hop ti le submit va so sanh plan vs actual.</p></div>' +
         '<div class="tool-info-grid">' +
-          '<div class="tool-info-section">' +
-            '<div class="tool-info-section-title"><i class="ti ti-settings"></i> Cau hinh</div>' +
-            '<div class="tool-info-kv">' +
-              '<div class="kv-row"><span class="kv-key">Timezone</span><span class="kv-val">Asia/Ho_Chi_Minh</span></div>' +
-              '<div class="kv-row"><span class="kv-key">Tan suat</span><span class="kv-val">Hang ngay (Thu 2 – Thu 6)</span></div>' +
-              '<div class="kv-row"><span class="kv-key">Platform</span><span class="kv-val">Lark / Feishu</span></div>' +
-            '</div>' +
-          '</div>' +
-          '<div class="tool-info-section">' +
-            '<div class="tool-info-section-title"><i class="ti ti-database"></i> Data source</div>' +
-            '<div class="tool-info-kv">' +
-              '<div class="kv-row"><span class="kv-key">Source</span><span class="kv-val">Google Sheets</span></div>' +
-              '<div class="kv-row"><span class="kv-key">Sheet</span><span class="kv-val kv-mono">BD-MKT-L&D-Daily Report</span></div>' +
-              '<div class="kv-row"><span class="kv-key">Method</span><span class="kv-val kv-mono">CSV export</span></div>' +
-            '</div>' +
-          '</div>' +
+          '<div class="tool-info-section"><div class="tool-info-section-title"><i class="ti ti-settings"></i> Cau hinh</div><div class="tool-info-kv"><div class="kv-row"><span class="kv-key">Timezone</span><span class="kv-val">Asia/Ho_Chi_Minh</span></div><div class="kv-row"><span class="kv-key">Tan suat</span><span class="kv-val">Hang ngay (Thu 2 – Thu 6)</span></div><div class="kv-row"><span class="kv-key">Platform</span><span class="kv-val">Lark / Feishu</span></div></div></div>' +
+          '<div class="tool-info-section"><div class="tool-info-section-title"><i class="ti ti-database"></i> Data source</div><div class="tool-info-kv"><div class="kv-row"><span class="kv-key">Source</span><span class="kv-val">Google Sheets</span></div><div class="kv-row"><span class="kv-key">Sheet</span><span class="kv-val kv-mono">BD-MKT-L&D-Daily Report</span></div><div class="kv-row"><span class="kv-key">Method</span><span class="kv-val kv-mono">CSV export</span></div></div></div>' +
         '</div>' +
       '</div>';
 
@@ -443,6 +645,10 @@ window.TOOL_REGISTRY.push({
           var sel = document.getElementById("bd-chart-range");
           if (sel) sel.addEventListener("change", function() { window._buildBDChart(parseInt(this.value)); });
         }
+
+        /* Insight FAB */
+        var fab = document.getElementById("bd-insight-fab");
+        if (fab) fab.addEventListener("click", function() { _bdOpenInsightPanel(window._bdData || {}, false); });
       }, 50);
 
       document.querySelectorAll(".tab-btn").forEach(function(btn) {
