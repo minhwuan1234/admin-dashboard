@@ -86,7 +86,7 @@ async function _duCallOpenAI(summary) {
     messages: [
       {
         role: "system",
-        content: "Ban la PM assistant cua F.Learning Studio. Nhan vao data standup hang ngay cua team, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"consistencyInsight\":\"string\",\"taskInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"]}. Neu co member missing, de cap nhung khong neu ten. Highlights toi da 4. Recommendations toi da 3."
+        content: "Ban la PM assistant cua F.Learning Studio. Nhan vao data standup hang ngay cua team, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"consistencyInsight\":\"string\",\"taskInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"]}. Neu co member missing, de cap nhung khong neu ten. Highlights toi da 4. Recommendations toi da 3. Recommedation trả về phải đưa ra được các cách bạn có thể cải thiện tỉ lệ rating "
       },
       {
         role: "user",
