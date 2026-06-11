@@ -5,8 +5,8 @@
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 /* ── OpenAI config ── */
-var _BD_OPENAI_KEY = "";
-var _BD_OPENAI_MODEL = "gpt-5.5";
+var _BD_OPENAI_KEY   = "sk-PASTE_YOUR_KEY_HERE";
+var _BD_OPENAI_MODEL = "gpt-4o-mini";
 
 /* ── ISO week helper ── */
 function _bdGetISOWeek(date) {
@@ -111,14 +111,7 @@ async function _bdCallOpenAI(summary) {
     messages: [
       {
         role: "system",
-        content: [
-          "Ban la PM assistant cua F.Learning Studio, phu trach team BD-MKT.",
-          "Nhan vao data daily report (morning plan + evening actual) cua team,",
-          "tra ve insight ngan gon, actionable bang tieng Viet.",
-          "Format output CHINH XAC theo JSON sau, khong them gi ngoai JSON:",
-          '{"summary":"1-2 cau tong quan hom nay","highlights":[{"type":"positive|warning|neutral","text":"insight ngan"}],"morningEveningGap":"1 cau","planActualInsight":"1 cau","consistencyInsight":"1 cau","weeklyTrend":"1 cau","recommendations":["action 1","action 2"]}',
-          "Highlights toi da 4. Recommendations toi da 3. Khong neu ten ca nhan. Ngan gon."
-        ].join(" ")
+        content: "Ban la PM assistant cua F.Learning Studio, phu trach team BD-MKT. Nhan vao data daily report (morning plan + evening actual) cua team, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"morningEveningGap\":\"string\",\"planActualInsight\":\"string\",\"consistencyInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"]}. Highlights toi da 4. Recommendations toi da 3. Khong neu ten ca nhan."
       },
       {
         role: "user",
@@ -134,31 +127,6 @@ async function _bdCallOpenAI(summary) {
       "Authorization": "Bearer " + (localStorage.getItem("fl_openai_key") || _BD_OPENAI_KEY)
     },
     body: JSON.stringify(payload)
-  });
-
-  if (!res.ok) throw new Error("OpenAI HTTP " + res.status);
-  var json = await res.json();
-  var raw = json.choices[0].message.content.trim()
-    .replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
-  return JSON.parse(raw);
-}
-
-  var userPrompt = "Data BD-MKT daily report tuần " + summary.generatedWeek + ":\n" + JSON.stringify(summary, null, 2);
-
-  var res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type":  "application/json",
-      "Authorization": "Bearer " + (localStorage.getItem("fl_openai_key") || _BD_OPENAI_KEY)    },
-    body: JSON.stringify({
-      model:       _BD_OPENAI_MODEL,
-      max_tokens:  800,
-      temperature: 0.4,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user",   content: userPrompt   }
-      ]
-    })
   });
 
   if (!res.ok) throw new Error("OpenAI HTTP " + res.status);
