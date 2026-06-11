@@ -78,26 +78,36 @@ function _duAggregate(data) {
 }
 
 /* ── Call OpenAI API ── */
-async function _duCallOpenAI(summary) {
-  var systemPrompt =
-    "Bạn là PM assistant của F.Learning Studio. Nhận vào data standup hàng ngày của team, " +
-    "trả về insight ngắn gọn, actionable bằng tiếng Việt. " +
-    "Format output CHÍNH XÁC theo JSON sau, không thêm gì ngoài JSON:\n" +
-    "{\n" +
-    "  \"summary\": \"1-2 câu tổng quan hôm nay\",\n" +
-    "  \"highlights\": [\n" +
-    "    {\"type\": \"positive|warning|neutral\", \"text\": \"insight ngắn\"},\n" +
-    "    ...\n" +
-    "  ],\n" +
-    "  \"consistencyInsight\": \"1 câu về consistency submit của team trong 7 ngày qua\",\n" +
-    "  \"taskInsight\": \"1 câu về tình hình task progress hôm nay\",\n" +
-    "  \"weeklyTrend\": \"1 câu xu hướng submit tuần này vs tuần trước\",\n" +
-    "  \"recommendations\": [\n" +
-    "    \"action cụ thể 1\",\n" +
-    "    \"action cụ thể 2\"\n" +
-    "  ]\n" +
-    "}\n" +
-    "Nếu có member missing, đề cập nhưng không nêu tên cụ thể. Highlights tối đa 4. Recommendations tối đa 3. Ngắn gọn.";
+var payload = {
+  model:       _DU_OPENAI_MODEL,
+  max_tokens:  800,
+  temperature: 0.4,
+  messages: [
+    {
+      role: "system",
+      content: [
+        "Ban la PM assistant cua F.Learning Studio.",
+        "Nhan vao data standup hang ngay cua team, tra ve insight ngan gon, actionable bang tieng Viet.",
+        "Format output CHINH XAC theo JSON sau, khong them gi ngoai JSON:",
+        '{"summary":"1-2 cau tong quan","highlights":[{"type":"positive|warning|neutral","text":"insight ngan"}],"consistencyInsight":"1 cau","taskInsight":"1 cau","weeklyTrend":"1 cau","recommendations":["action 1","action 2"]}',
+        "Neu co member missing, de cap nhung khong neu ten cu the. Highlights toi da 4. Recommendations toi da 3."
+      ].join(" ")
+    },
+    {
+      role: "user",
+      content: "Data standup tuan " + summary.generatedWeek + ": " + JSON.stringify(summary)
+    }
+  ]
+};
+
+var res = await fetch("https://api.openai.com/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    "Content-Type":  "application/json",
+    "Authorization": "Bearer " + (localStorage.getItem("fl_openai_key") || _DU_OPENAI_KEY)
+  },
+  body: JSON.stringify(payload)
+});
 
   var userPrompt = "Data standup tuần " + summary.generatedWeek + ":\n" + JSON.stringify(summary, null, 2);
 
