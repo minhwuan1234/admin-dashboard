@@ -6,7 +6,7 @@ window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 /* ── OpenAI config ── */
 var _BD_OPENAI_KEY   = "sk-PASTE_YOUR_KEY_HERE";
-var _BD_OPENAI_MODEL = "gpt-4o-mini";
+var _BD_OPENAI_MODEL = "gpt-5.5";
 
 /* ── ISO week helper ── */
 function _bdGetISOWeek(date) {
