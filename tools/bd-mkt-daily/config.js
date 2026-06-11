@@ -111,7 +111,7 @@ async function _bdCallOpenAI(summary) {
     messages: [
       {
         role: "system",
-        content: "Ban la PM assistant cua F.Learning Studio, phu trach team BD-MKT. Nhan vao data daily report (morning plan + evening actual) cua team, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"morningEveningGap\":\"string\",\"planActualInsight\":\"string\",\"consistencyInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"]}. Highlights toi da 4. Recommendations toi da 3. Khong neu ten ca nhan."
+        content: "Ban la PM assistant cua F.Learning Studio, phu trach team BD-MKT. Nhan vao data daily report (morning plan + evening actual) cua team, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"morningEveningGap\":\"string\",\"planActualInsight\":\"string\",\"consistencyInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"]}. Highlights toi da 4. Recommendations toi da 3. Khong neu ten ca nhan.Recommedation trả về phải đưa ra được các cách bạn có thể cải thiện tỉ lệ rating"
       },
       {
         role: "user",
