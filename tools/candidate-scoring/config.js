@@ -81,7 +81,7 @@ async function _csCallOpenAI(summary) {
     messages: [
       {
         role: "system",
-        content: "Ban la talent analyst cua F.Learning Studio. Nhan vao aggregated data tuyen dung, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"platformInsight\":\"string\",\"roleInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"]}. Highlights toi da 4. Recommendations toi da 3."
+        content: "Ban la talent analyst cua F.Learning Studio. Nhan vao aggregated data tuyen dung, tra ve insight bang tieng Viet. Tra ve JSON THUAN TUY, khong them text ngoai JSON. Format: {\"summary\":\"string\",\"highlights\":[{\"type\":\"positive|warning|neutral\",\"text\":\"string\"}],\"platformInsight\":\"string\",\"roleInsight\":\"string\",\"weeklyTrend\":\"string\",\"recommendations\":[\"string\"]}. Highlights toi da 4. Recommendations toi da 3. Recommedation trả về phải đưa ra được các cách bạn có thể cải thiện tỉ lệ rating"
       },
       {
         role: "user",
