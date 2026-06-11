@@ -5,6 +5,308 @@
 
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
+/* ── OpenAI config ── */
+var _CS_OPENAI_KEY = "sk-PASTE_YOUR_KEY_HERE";
+var _CS_OPENAI_MODEL = "gpt-4o-mini";
+
+/* ── ISO week helper ── */
+function _csGetISOWeek(date) {
+  var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  var day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  var week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return d.getUTCFullYear() + "-W" + String(week).padStart(2, "0");
+}
+
+/* ── Aggregate data → summary payload (no PII) ── */
+function _csAggregate(data) {
+  var all = data.all || [];
+  var currentWeek = _csGetISOWeek(new Date());
+
+  /* by platform */
+  var byPlatform = {};
+  (data.platforms || []).forEach(function(p) {
+    var rows = all.filter(function(r) { return r._platform === p; });
+    byPlatform[p] = {
+      strong:   rows.filter(function(r) { return r._verdict === "strong";   }).length,
+      consider: rows.filter(function(r) { return r._verdict === "consider"; }).length,
+      rejected: rows.filter(function(r) { return r._verdict === "rejected"; }).length,
+      total:    rows.length
+    };
+  });
+
+  /* by role */
+  var byRole = {};
+  (data.roles || []).forEach(function(role) {
+    var rows = all.filter(function(r) { return r._role === role; });
+    byRole[role] = {
+      strong:   rows.filter(function(r) { return r._verdict === "strong";   }).length,
+      consider: rows.filter(function(r) { return r._verdict === "consider"; }).length,
+      rejected: rows.filter(function(r) { return r._verdict === "rejected"; }).length,
+      total:    rows.length
+    };
+  });
+
+  /* by week (last 8 weeks) */
+  var weekMap = {};
+  all.forEach(function(r) {
+    if (!r._dateStr) return;
+    var w = _csGetISOWeek(new Date(r._dateStr));
+    if (!weekMap[w]) weekMap[w] = { strong: 0, consider: 0, rejected: 0, total: 0 };
+    weekMap[w][r._verdict]++;
+    weekMap[w].total++;
+  });
+  var byWeek = {};
+  Object.keys(weekMap).sort().slice(-8).forEach(function(w) { byWeek[w] = weekMap[w]; });
+
+  return {
+    generatedWeek: currentWeek,
+    total:         data.totalAll,
+    strong:        data.totalStrong,
+    consider:      data.totalConsider,
+    rejected:      data.totalRejected,
+    strongRate:    data.totalAll > 0 ? Math.round(data.totalStrong / data.totalAll * 100) : 0,
+    byPlatform:    byPlatform,
+    byRole:        byRole,
+    byWeek:        byWeek
+  };
+}
+
+/* ── Call OpenAI API ── */
+async function _csCallOpenAI(summary) {
+  var systemPrompt =
+    "Bạn là talent analyst của F.Learning Studio — công ty thiết kế e-learning tại Việt Nam. " +
+    "Nhận vào aggregated data tuyển dụng (không có thông tin cá nhân), trả về insight ngắn gọn, actionable bằng tiếng Việt. " +
+    "Format output CHÍNH XÁC theo cấu trúc JSON sau, không thêm gì ngoài JSON:\n" +
+    "{\n" +
+    "  \"summary\": \"1-2 câu tổng quan tuần này\",\n" +
+    "  \"highlights\": [\n" +
+    "    {\"type\": \"positive|warning|neutral\", \"text\": \"insight ngắn\"},\n" +
+    "    ...\n" +
+    "  ],\n" +
+    "  \"platformInsight\": \"1 câu nhận xét về platform nào đang hiệu quả nhất/kém nhất\",\n" +
+    "  \"roleInsight\": \"1 câu nhận xét về vị trí nào đang khan hiếm ứng viên qualified\",\n" +
+    "  \"weeklyTrend\": \"1 câu về xu hướng tuần gần đây (tăng/giảm/ổn định)\",\n" +
+    "  \"recommendations\": [\n" +
+    "    \"action cụ thể 1\",\n" +
+    "    \"action cụ thể 2\"\n" +
+    "  ]\n" +
+    "}\n" +
+    "Highlights tối đa 4 items. Recommendations tối đa 3 items. Ngắn gọn, không sáo rỗng.";
+
+  var userPrompt = "Đây là data tuyển dụng tuần " + summary.generatedWeek + ":\n" + JSON.stringify(summary, null, 2);
+
+  var res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type":  "application/json",
+      "Authorization": "Bearer " + _CS_OPENAI_KEY
+    },
+    body: JSON.stringify({
+      model:       _CS_OPENAI_MODEL,
+      max_tokens:  800,
+      temperature: 0.4,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user",   content: userPrompt   }
+      ]
+    })
+  });
+
+  if (!res.ok) throw new Error("OpenAI HTTP " + res.status);
+  var json = await res.json();
+  var raw = json.choices[0].message.content.trim();
+  /* strip markdown fences nếu model vẫn wrap */
+  raw = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+  return JSON.parse(raw);
+}
+
+/* ── localStorage cache key ── */
+function _csCacheKey() {
+  return "cs_insight_" + _csGetISOWeek(new Date());
+}
+
+/* ── Render insight panel HTML từ parsed insight object ── */
+function _csRenderInsightHTML(insight, week, isCache) {
+  var typeIcon  = { positive: "ti-trending-up", warning: "ti-alert-triangle", neutral: "ti-info-circle" };
+  var typeColor = { positive: "var(--green)", warning: "var(--accent)", neutral: "var(--blue)" };
+  var typeBg    = { positive: "var(--green-dim)", warning: "var(--accent-dim)", neutral: "var(--blue-dim)" };
+
+  var highlightRows = (insight.highlights || []).map(function(h) {
+    var ic = typeIcon[h.type]  || "ti-info-circle";
+    var co = typeColor[h.type] || "var(--text-muted)";
+    var bg = typeBg[h.type]   || "var(--bg-hover)";
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:' + bg + ';border-radius:var(--radius-sm);margin-bottom:8px">' +
+      '<i class="ti ' + ic + '" style="font-size:14px;color:' + co + ';flex-shrink:0;margin-top:1px"></i>' +
+      '<span style="font-size:13px;color:var(--text-primary);line-height:1.55">' + h.text + '</span>' +
+    '</div>';
+  }).join("");
+
+  var recRows = (insight.recommendations || []).map(function(r, i) {
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
+      '<span style="width:20px;height:20px;border-radius:50%;background:var(--accent);color:#000;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">' + (i+1) + '</span>' +
+      '<span style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + r + '</span>' +
+    '</div>';
+  }).join("");
+
+  var cacheNote = isCache
+    ? '<span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">Cache ' + week + ' · <button id="cs-insight-regen" style="background:none;border:none;color:var(--accent);font-size:10px;font-family:var(--font-mono);cursor:pointer;padding:0">↻ Regenerate</button></span>'
+    : '<span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">Generated ' + week + '</span>';
+
+  return '<div style="display:flex;flex-direction:column;gap:0;height:100%">' +
+    /* header */
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 20px 16px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+        '<div style="width:32px;height:32px;border-radius:var(--radius-sm);background:var(--accent-dim);display:flex;align-items:center;justify-content:center;color:var(--accent)">' +
+          '<i class="ti ti-sparkles" style="font-size:16px"></i>' +
+        '</div>' +
+        '<div>' +
+          '<p style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">AI Insight</p>' +
+          cacheNote +
+        '</div>' +
+      '</div>' +
+      '<button id="cs-insight-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center">' +
+        '<i class="ti ti-x"></i>' +
+      '</button>' +
+    '</div>' +
+
+    /* scrollable body */
+    '<div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">' +
+
+      /* summary */
+      '<div>' +
+        '<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:8px">Tổng quan</p>' +
+        '<p style="font-size:14px;color:var(--text-primary);line-height:1.65;background:var(--bg-hover);padding:12px 14px;border-radius:var(--radius-sm)">' + insight.summary + '</p>' +
+      '</div>' +
+
+      /* highlights */
+      (highlightRows ? '<div><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:8px">Điểm đáng chú ý</p>' + highlightRows + '</div>' : '') +
+
+      /* platform + role insights */
+      '<div style="display:flex;flex-direction:column;gap:8px">' +
+        '<p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:0">Phân tích</p>' +
+        '<div style="padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm)">' +
+          '<p style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Nền tảng</p>' +
+          '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + insight.platformInsight + '</p>' +
+        '</div>' +
+        '<div style="padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm)">' +
+          '<p style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Vị trí</p>' +
+          '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + insight.roleInsight + '</p>' +
+        '</div>' +
+        '<div style="padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm)">' +
+          '<p style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Xu hướng tuần</p>' +
+          '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55">' + insight.weeklyTrend + '</p>' +
+        '</div>' +
+      '</div>' +
+
+      /* recommendations */
+      (recRows ? '<div><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:10px">Khuyến nghị</p>' + recRows + '</div>' : '') +
+
+    '</div>' + /* end scrollable */
+  '</div>';
+}
+
+/* ── Loading skeleton HTML ── */
+function _csInsightLoadingHTML() {
+  return '<div style="display:flex;flex-direction:column;gap:0;height:100%">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 20px 16px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+        '<div style="width:32px;height:32px;border-radius:var(--radius-sm);background:var(--accent-dim);display:flex;align-items:center;justify-content:center;color:var(--accent)"><i class="ti ti-sparkles" style="font-size:16px"></i></div>' +
+        '<div><p style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">AI Insight</p><span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">Đang phân tích...</span></div>' +
+      '</div>' +
+      '<button id="cs-insight-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
+    '</div>' +
+    '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:40px">' +
+      '<div style="width:36px;height:36px;border:2px solid var(--border-strong);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div>' +
+      '<div style="text-align:center">' +
+        '<p style="font-size:14px;color:var(--text-primary);margin-bottom:4px">Đang gọi AI...</p>' +
+        '<p style="font-size:12px;color:var(--text-muted)">Phân tích ' + (window._csAll||[]).length + ' ứng viên</p>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+/* ── Error HTML ── */
+function _csInsightErrorHTML(msg) {
+  return '<div style="display:flex;flex-direction:column;gap:0;height:100%">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 20px 16px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+        '<div style="width:32px;height:32px;border-radius:var(--radius-sm);background:var(--red-dim);display:flex;align-items:center;justify-content:center;color:var(--red)"><i class="ti ti-alert-circle" style="font-size:16px"></i></div>' +
+        '<p style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">AI Insight</p>' +
+      '</div>' +
+      '<button id="cs-insight-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
+    '</div>' +
+    '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:40px;text-align:center">' +
+      '<i class="ti ti-wifi-off" style="font-size:36px;color:var(--text-muted)"></i>' +
+      '<p style="font-size:14px;color:var(--text-primary)">Không thể tạo insight</p>' +
+      '<p style="font-size:12px;color:var(--text-muted)">' + msg + '</p>' +
+      '<button id="cs-insight-retry" style="margin-top:8px;padding:8px 18px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--radius-sm);color:var(--accent);font-size:13px;cursor:pointer">↻ Thử lại</button>' +
+    '</div>' +
+  '</div>';
+}
+
+/* ── Open / populate side panel ── */
+async function _csOpenInsightPanel(data, forceRegen) {
+  var panel   = document.getElementById("cs-insight-panel");
+  var overlay = document.getElementById("cs-insight-overlay");
+  if (!panel) return;
+
+  /* open */
+  overlay.style.display = "block";
+  panel.classList.add("open");
+
+  var week     = _csGetISOWeek(new Date());
+  var cacheKey = _csCacheKey();
+  var cached   = null;
+
+  if (!forceRegen) {
+    try { cached = JSON.parse(localStorage.getItem(cacheKey)); } catch(e) {}
+  }
+
+  if (cached) {
+    panel.innerHTML = _csRenderInsightHTML(cached, week, true);
+    _csBindPanelEvents(data, panel, overlay);
+    return;
+  }
+
+  /* loading */
+  panel.innerHTML = _csInsightLoadingHTML();
+  _csBindCloseEvent(panel, overlay);
+
+  try {
+    var summary = _csAggregate(data);
+    var insight = await _csCallOpenAI(summary);
+    localStorage.setItem(cacheKey, JSON.stringify(insight));
+    panel.innerHTML = _csRenderInsightHTML(insight, week, false);
+    _csBindPanelEvents(data, panel, overlay);
+  } catch(err) {
+    panel.innerHTML = _csInsightErrorHTML(err.message);
+    _csBindCloseEvent(panel, overlay);
+    var retryBtn = document.getElementById("cs-insight-retry");
+    if (retryBtn) retryBtn.addEventListener("click", function() { _csOpenInsightPanel(data, true); });
+  }
+}
+
+function _csBindCloseEvent(panel, overlay) {
+  var closeBtn = document.getElementById("cs-insight-close");
+  if (closeBtn) closeBtn.addEventListener("click", function() { _csClosePanel(panel, overlay); });
+  overlay.addEventListener("click", function() { _csClosePanel(panel, overlay); });
+}
+
+function _csBindPanelEvents(data, panel, overlay) {
+  _csBindCloseEvent(panel, overlay);
+  var regenBtn = document.getElementById("cs-insight-regen");
+  if (regenBtn) regenBtn.addEventListener("click", function() { _csOpenInsightPanel(data, true); });
+}
+
+function _csClosePanel(panel, overlay) {
+  panel.classList.remove("open");
+  overlay.style.display = "none";
+}
+
+/* ══════════════════════════════════════════════════════════════ */
+
 window.TOOL_REGISTRY.push({
   id:          "candidate-scoring",
   name:        "Candidate Scoring",
@@ -130,7 +432,15 @@ window.TOOL_REGISTRY.push({
         '<button class="tab-btn" data-tab="info"><i class="ti ti-info-circle"></i> Thong tin tool</button>'+
       '</div>'+
       '<div id="tab-tracking" class="tab-pane"></div>'+
-      '<div id="tab-info"     class="tab-pane" style="display:none"></div>';
+      '<div id="tab-info"     class="tab-pane" style="display:none"></div>'+
+      /* Insight side panel + overlay — inject once vào DOM */
+      '<div id="cs-insight-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:199;backdrop-filter:blur(2px)"></div>'+
+      '<div id="cs-insight-panel" class="cs-insight-panel"></div>'+
+      /* Floating insight button */
+      '<button id="cs-insight-fab" class="cs-insight-fab" title="Xem AI Insight">'+
+        '<i class="ti ti-sparkles"></i>'+
+        '<span>Insight</span>'+
+      '</button>';
 
     /* Stats */
     var total=data.totalAll,sc=data.totalStrong,co=data.totalConsider,re=data.totalRejected;
@@ -149,7 +459,7 @@ window.TOOL_REGISTRY.push({
     window._csPlatforms=data.platforms||[];
     window._csPColors  =data.pColors  ||{};
 
-    /* ══ CHART: full-width, 1 col per platform, stacked verdict ══ */
+    /* ══ CHART ══ */
     window._buildCSChart=function(){
       var wrap=document.getElementById("cs-chart-outer");
       if(!wrap)return;
@@ -165,7 +475,6 @@ window.TOOL_REGISTRY.push({
         return;
       }
 
-      /* per-platform data */
       var ptData=platforms.map(function(p){
         var rows=all.filter(function(r){return r._platform===p;});
         var s=rows.filter(function(r){return r._verdict==="strong";}).length;
@@ -177,7 +486,6 @@ window.TOOL_REGISTRY.push({
       var maxVal=Math.max.apply(null,ptData.map(function(d){return d.total;}));
       if(!maxVal)maxVal=1;
 
-      /* Y ticks */
       var rawStep=maxVal/4;
       var tickStep=Math.ceil(rawStep);
       if(tickStep<1)tickStep=1;
@@ -188,7 +496,6 @@ window.TOOL_REGISTRY.push({
       var CHART_H=220;
       var Y_W=28;
 
-      /* grid lines */
       var gridHTML=ticks.map(function(tick){
         var pct=tick/yMax*100;
         return '<div style="position:absolute;left:0;right:0;bottom:'+pct+'%;border-top:1px dashed rgba(255,255,255,.07);pointer-events:none">'+
@@ -197,7 +504,6 @@ window.TOOL_REGISTRY.push({
       }).join("")+
       '<div style="position:absolute;bottom:0;left:0;right:0;border-top:1px solid var(--border-strong)"></div>';
 
-      /* columns */
       var colsHTML=ptData.map(function(d){
         var color=pColors[d.p]||"var(--accent)";
         var pctH =d.total/yMax*100;
@@ -213,7 +519,6 @@ window.TOOL_REGISTRY.push({
 
         return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;min-width:0" '+
                'data-tip="'+tipHtml.replace(/"/g,"&quot;")+'">'+
-          /* bar column */
           '<div style="width:100%;height:'+CHART_H+'px;position:relative;display:flex;flex-direction:column;justify-content:flex-end">'+
             '<div style="width:100%;height:'+Math.max(pctH,d.total>0?2:0)+'%;'+
                  'display:flex;flex-direction:column-reverse;'+
@@ -224,7 +529,6 @@ window.TOOL_REGISTRY.push({
               (d.s>0?'<div style="flex:'+Math.max(pctS,2)+';background:#4ade80"></div>':'')+
             '</div>'+
           '</div>'+
-          /* label row */
           '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:100%">'+
             '<span style="width:9px;height:9px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'+
             '<span style="font-size:11px;color:var(--text-secondary);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;text-align:center">'+d.p+'</span>'+
@@ -233,7 +537,6 @@ window.TOOL_REGISTRY.push({
         '</div>';
       }).join("");
 
-      /* legend */
       var legendHTML=
         '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:20px;font-size:11px;color:var(--text-muted)">'+
           '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:#4ade80"></span>Strong hire</span>'+
@@ -249,15 +552,12 @@ window.TOOL_REGISTRY.push({
 
       wrap.innerHTML=legendHTML+
         '<div style="position:relative;padding-left:'+(Y_W+4)+'px">'+
-          /* grid */
           '<div style="position:absolute;left:'+(Y_W+4)+'px;right:0;top:0;height:'+CHART_H+'px">'+gridHTML+'</div>'+
-          /* bars */
           '<div style="display:flex;align-items:flex-end;gap:12px;height:'+(CHART_H+56)+'px;padding:0 8px">'+
             colsHTML+
           '</div>'+
         '</div>';
 
-      /* tooltips */
       var tip=document.getElementById("_cs_tip");
       if(!tip){
         tip=document.createElement("div");
@@ -413,7 +713,7 @@ window.TOOL_REGISTRY.push({
             '<div class="tool-info-section-title"><i class="ti ti-settings"></i> Cau hinh</div>'+
             '<div class="tool-info-kv">'+
               '<div class="kv-row"><span class="kv-key">Trigger</span><span class="kv-val">Google Sheets — row added</span></div>'+
-              '<div class="kv-row"><span class="kv-key">AI model</span><span class="kv-val">GPT-5.4</span></div>'+
+              '<div class="kv-row"><span class="kv-key">AI model</span><span class="kv-val">GPT-4o-mini</span></div>'+
               '<div class="kv-row"><span class="kv-key">Positions</span><span class="kv-val">BD, Account, L&D, PC, HR Intern</span></div>'+
               '<div class="kv-row"><span class="kv-key">Verdict</span><span class="kv-val">Strong ≥80% / Consider ≥60% / Weak</span></div>'+
             '</div>'+
@@ -440,6 +740,7 @@ window.TOOL_REGISTRY.push({
     window._csInfoHTML    =infoHTML;
     window._csSorted      =sorted;
     window._csBuildRows   =buildRows;
+    window._csData        =data; /* store for insight panel */
 
     window._initCSTabs=function(){
       var tracking=document.getElementById("tab-tracking");
@@ -468,6 +769,15 @@ window.TOOL_REGISTRY.push({
             if(tbody)tbody.innerHTML=window._csBuildRows(rows);
           });
         });
+
+        /* insight FAB */
+        var fab=document.getElementById("cs-insight-fab");
+        if(fab){
+          fab.addEventListener("click",function(){
+            _csOpenInsightPanel(window._csData||{}, false);
+          });
+        }
+
       },50);
 
       /* main tabs */
