@@ -4,9 +4,12 @@
 
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
+/* ── Worker URL ── */
+var _BD_WORKER_URL = "https://admin-dashboard.minhwuan889.workers.dev/";
+
 /* ── OpenAI config ── */
 var _BD_OPENAI_KEY   = "sk-PASTE_YOUR_KEY_HERE";
-var _BD_OPENAI_MODEL = "gpt-5.5";
+
 
 /* ── ISO week helper ── */
 function _bdGetISOWeek(date) {
@@ -116,16 +119,13 @@ async function _bdCallOpenAI(summary) {
     ]
   };
 
-  var res = await fetch("https://api.openai.com/v1/chat/completions", {
+  var res = await fetch(_BD_WORKER_URL + "/ai-insight", {
     method: "POST",
-    headers: {
-      "Content-Type":  "application/json",
-      "Authorization": "Bearer " + (localStorage.getItem("fl_openai_key") || _BD_OPENAI_KEY)
-    },
-    body: JSON.stringify(payload)
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: payload.messages })
   });
 
-  if (!res.ok) throw new Error("OpenAI HTTP " + res.status);
+  if (!res.ok) throw new Error("Worker HTTP " + res.status);
   var json = await res.json();
   var raw = json.choices[0].message.content.trim()
     .replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
