@@ -566,8 +566,9 @@ window.TOOL_REGISTRY.push({
             }).join("");
             stepsHTML2 = '<details style="margin-top:4px"><summary style="font-size:10px;color:var(--text-muted);cursor:pointer;list-style:none">' + stepsRaw.split("|").length + ' bước</summary><div style="padding:6px 8px;margin-top:4px;background:var(--bg-hover);border-radius:4px">' + stepItems + '</div></details>';
           }
+          var outputLine2 = (d.morning && d.morning["Output " + i] && d.morning["Output " + i] !== "—") ? '<div style="font-size:10px;color:var(--text-muted);margin-top:2px">📦 ' + d.morning["Output " + i] + '</div>' : "";
           taskCols +=
-            '<td style="font-size:12px;color:var(--text-primary);min-width:140px">' + (title || "—") + stepsHTML2 + '</td>' +
+            '<td style="font-size:12px;color:var(--text-primary);min-width:140px">' + (title || "—") + outputLine2 + stepsHTML2 + '</td>' +
             '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">' + plan + '</td>' +
             '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
             '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">' + time + '</td>';
@@ -641,8 +642,9 @@ window.TOOL_REGISTRY.push({
           }).join("");
           stepsHTML = '<details style="margin-top:4px"><summary style="font-size:10px;color:var(--text-muted);cursor:pointer;list-style:none;display:flex;align-items:center;gap:4px"><i class="ti ti-list-details" style="font-size:10px"></i> ' + t.steps.length + ' bước</summary><div style="margin-top:4px;padding:6px 8px;background:var(--bg-hover);border-radius:4px">' + stepLines + '</div></details>';
         }
+        var outputLine = (t && t.output && t.output !== "—") ? '<div style="font-size:10px;color:var(--text-muted);margin-top:2px">📦 ' + t.output + '</div>' : "";
         taskCols +=
-          '<td style="font-size:12px;color:var(--text-primary);min-width:140px">' + (t ? (t.title||"—") : "—") + stepsHTML + '</td>' +
+          '<td style="font-size:12px;color:var(--text-primary);min-width:140px">' + (t ? (t.title||"—") : "—") + outputLine + stepsHTML + '</td>' +
           '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">'                                                      + (t ? (t.expectedTime||"—") : "—") + '</td>' +
           '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
           '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">'                             + (time || "—")                     + '</td>';
