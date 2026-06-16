@@ -368,6 +368,22 @@ window.TOOL_REGISTRY.push({
         var title = r["Task " + i]; if (!title) continue;
         tasks.push({ title: title, output: r["Output " + i] || "—", expectedTime: r["Expected " + i] || "—", progress: r["Progress " + i] || "—", timeSpent: r["TimeSpent "+ i] || "—" });
       }
+      // Parse steps từ cột Steps N (dạng "1. Bước → Output | 2. Bước → Output")
+      for (var ti2 = 0; ti2 < tasks.length; ti2++) {
+        var stepsRaw = r["Steps " + (ti2 + 1)] || "";
+        if (stepsRaw) {
+          tasks[ti2].steps = stepsRaw.split("|").map(function(s) {
+            var trimmed = s.trim();
+            var arrowIdx = trimmed.indexOf("→");
+            if (arrowIdx > -1) {
+              return { what: trimmed.slice(0, arrowIdx).replace(/^\d+\.\s*/, "").trim(), output: trimmed.slice(arrowIdx + 1).trim() };
+            }
+            return { what: trimmed.replace(/^\d+\.\s*/, "").trim(), output: "" };
+          }).filter(function(s) { return s.what; });
+        } else {
+          tasks[ti2].steps = [];
+        }
+      }
       var entry = { memberName: member, tasks: tasks, submittedAt: r["Submitted At"] || "", blockers: r["Blockers"] || "", tomorrowPlan: r["Tomorrow Plan"] || "", weeklyGoal: r["Weekly Goal"] || "" };
       if (type === "morning") todayMorning[member] = entry;
       if (type === "evening") todayEvening[member] = entry;
@@ -532,14 +548,26 @@ window.TOOL_REGISTRY.push({
           : '<span class="status-pill missing" style="font-size:10px">✗ Chua</span>';
         var taskCols = "";
         for (var i = 1; i <= 2; i++) {
-          var title = d.morning ? (d.morning["Task " + i] || "") : "";
-          var plan  = d.morning ? (d.morning["Expected " + i] || "—") : "—";
-          var prog  = d.evening ? (d.evening["Progress " + i] || "") : "";
-          var time  = d.evening ? (d.evening["TimeSpent "+ i] || "—") : "—";
+          var title    = d.morning ? (d.morning["Task " + i] || "") : "";
+          var plan     = d.morning ? (d.morning["Expected " + i] || "—") : "—";
+          var prog     = d.evening ? (d.evening["Progress " + i] || "") : "";
+          var time     = d.evening ? (d.evening["TimeSpent "+ i] || "—") : "—";
+          var stepsRaw = d.morning ? (d.morning["Steps " + i] || "") : "";
           if (!title && i > 1) continue;
           var pc = prog === "100%" ? "done" : prog && parseInt(prog) >= 60 ? "high" : "medium";
+          var stepsHTML2 = "";
+          if (stepsRaw) {
+            var stepItems = stepsRaw.split("|").map(function(s, si) {
+              var trimmed = s.trim().replace(/^\d+\.\s*/, "");
+              var arrowIdx = trimmed.indexOf("→");
+              var what = arrowIdx > -1 ? trimmed.slice(0, arrowIdx).trim() : trimmed;
+              var out  = arrowIdx > -1 ? trimmed.slice(arrowIdx + 1).trim() : "";
+              return '<div style="font-size:11px;color:var(--text-secondary);padding:2px 0">' + (si+1) + '. ' + what + (out ? '<span style="color:var(--text-muted)"> → ' + out + '</span>' : '') + '</div>';
+            }).join("");
+            stepsHTML2 = '<details style="margin-top:4px"><summary style="font-size:10px;color:var(--text-muted);cursor:pointer;list-style:none">' + stepsRaw.split("|").length + ' bước</summary><div style="padding:6px 8px;margin-top:4px;background:var(--bg-hover);border-radius:4px">' + stepItems + '</div></details>';
+          }
           taskCols +=
-            '<td style="font-size:12px;color:var(--text-primary)">' + (title || "—") + '</td>' +
+            '<td style="font-size:12px;color:var(--text-primary);min-width:140px">' + (title || "—") + stepsHTML2 + '</td>' +
             '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">' + plan + '</td>' +
             '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
             '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">' + time + '</td>';
@@ -601,8 +629,20 @@ window.TOOL_REGISTRY.push({
         var prog   = actual ? actual.progress  : null;
         var time   = actual ? actual.timeSpent : null;
         var pc     = prog === "100%" ? "done" : prog && parseInt(prog) >= 60 ? "high" : "medium";
+        // Steps breakdown
+        var stepsHTML = "";
+        if (t && t.steps && t.steps.length) {
+          var stepLines = t.steps.map(function(s, si) {
+            var progClass = actual && actual.steps && actual.steps[si] ? actual.steps[si].progress : "";
+            return '<div style="display:flex;align-items:flex-start;gap:6px;padding:2px 0">' +
+              '<span style="font-size:10px;color:var(--text-muted);flex-shrink:0;margin-top:1px">' + (si+1) + '.</span>' +
+              '<span style="font-size:11px;color:var(--text-secondary)">' + s.what + (s.output ? '<span style="color:var(--text-muted)"> → ' + s.output + '</span>' : '') + '</span>' +
+            '</div>';
+          }).join("");
+          stepsHTML = '<details style="margin-top:4px"><summary style="font-size:10px;color:var(--text-muted);cursor:pointer;list-style:none;display:flex;align-items:center;gap:4px"><i class="ti ti-list-details" style="font-size:10px"></i> ' + t.steps.length + ' bước</summary><div style="margin-top:4px;padding:6px 8px;background:var(--bg-hover);border-radius:4px">' + stepLines + '</div></details>';
+        }
         taskCols +=
-          '<td style="font-size:12px;color:var(--text-primary)">'                                                                           + (t ? (t.title||"—") : "—")        + '</td>' +
+          '<td style="font-size:12px;color:var(--text-primary);min-width:140px">' + (t ? (t.title||"—") : "—") + stepsHTML + '</td>' +
           '<td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">'                                                      + (t ? (t.expectedTime||"—") : "—") + '</td>' +
           '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
           '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">'                             + (time || "—")                     + '</td>';
