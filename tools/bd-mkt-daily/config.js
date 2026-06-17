@@ -5,8 +5,8 @@
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 /* ── Worker URL ── */
-var _BD_WORKER_URL = "https://admin-dashboard.minhwuan889.workers.dev/";
-
+// var _BD_WORKER_URL = "https://admin-dashboard.minhwuan889.workers.dev/";
+var _BD_WORKER_URL = "";
 /* ── OpenAI config ── */
 
 /* ── ISO week helper ── */
@@ -319,7 +319,8 @@ window.TOOL_REGISTRY.push({
     "ou_1f71198623d1dc71688fe1312390f7ee": "Nga Linh",
     "ou_d7d124081bfa6eabfb12e85166eca85f": "Giang",
     "ou_6993f5104b93fe3d774304bc9637884d": "Linh",
-    "ou_12548715eba533527311e76207c95ce4": "Minh Anh"
+    "ou_12548715eba533527311e76207c95ce4": "Minh Anh",
+    "ou_54c6d3cd8a2239d14e894f404591506a": "Hân"
   },
 
   fetchData: async function(utils) {
@@ -573,7 +574,7 @@ window.TOOL_REGISTRY.push({
             '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
             '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">' + time + '</td>';
         }
-        return '<tr><td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name + '</td><td style="vertical-align:middle">' + mCell + '</td><td style="vertical-align:middle">' + eCell + '</td>' + taskCols + '</tr>';
+        return '<tr><td style="font-weight:500;white-space:nowrap;vertical-align:middle"><button class="bd-member-name-btn" data-member="' + name + '" style="background:none;border:none;color:var(--accent);font-size:13px;font-weight:500;cursor:pointer;padding:0;font-family:var(--font-body);text-decoration:underline;text-decoration-color:rgba(255,147,51,0.3);text-underline-offset:3px;white-space:nowrap" title="Xem lịch sử submit">' + name + '</button></td><td style="vertical-align:middle">' + mCell + '</td><td style="vertical-align:middle">' + eCell + '</td>' + taskCols + '</tr>';
       }).join("");
       var mCount = Object.values(byMember).filter(function(d) { return d.morning; }).length;
       var eCount = Object.values(byMember).filter(function(d) { return d.evening; }).length;
@@ -649,7 +650,7 @@ window.TOOL_REGISTRY.push({
           '<td>' + (prog ? '<span class="progress-badge ' + pc + '">' + prog + '</span>' : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
           '<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap">'                             + (time || "—")                     + '</td>';
       }
-      return '<tr><td style="font-weight:500;white-space:nowrap;vertical-align:middle">' + name + '</td><td style="vertical-align:middle">' + mCell + '</td><td style="vertical-align:middle">' + eCell + '</td>' + taskCols + '</tr>';
+      return '<tr><td style="font-weight:500;white-space:nowrap;vertical-align:middle"><button class="bd-member-name-btn" data-member="' + name + '" style="background:none;border:none;color:var(--accent);font-size:13px;font-weight:500;cursor:pointer;padding:0;font-family:var(--font-body);text-decoration:underline;text-decoration-color:rgba(255,147,51,0.3);text-underline-offset:3px;white-space:nowrap" title="Xem lịch sử submit">' + name + '</button></td><td style="vertical-align:middle">' + mCell + '</td><td style="vertical-align:middle">' + eCell + '</td>' + taskCols + '</tr>';
     }).join("");
 
     var membersHTML =
@@ -671,6 +672,160 @@ window.TOOL_REGISTRY.push({
     window._bdTrackingHTML = statsHTML + chartHTML + membersHTML;
     window._bdInfoHTML     = infoHTML;
 
+    /* -- Member History Modal -- */
+    window._bdOpenMemberHistory = function(memberName) {
+      var allRows  = (window._bdData && window._bdData.allRows) || [];
+      var existing = document.getElementById("bd-member-modal");
+      if (existing) existing.remove();
+
+      var RANGES = [7, 14, 30];
+      var currentRange = 14;
+
+      function buildModalHTML(range) {
+        var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+        var days = [];
+        for (var i = range - 1; i >= 0; i--) {
+          var d = new Date(now); d.setDate(d.getDate() - i);
+          var ds = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+          var lbl = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
+          var dayName = ["CN","T2","T3","T4","T5","T6","T7"][d.getDay()];
+          var isWeekend = d.getDay() === 0 || d.getDay() === 6;
+          var memberRows = allRows.filter(function(r) { return r["Date"] === ds && r["Member"] === memberName; });
+          var morning = memberRows.find(function(r) { return r["Type"] === "morning"; });
+          var evening = memberRows.find(function(r) { return r["Type"] === "evening"; });
+          days.push({ ds: ds, lbl: lbl, dayName: dayName, isWeekend: isWeekend, morning: morning, evening: evening });
+        }
+
+        var submitCount = days.filter(function(d) { return d.morning; }).length;
+        var bothCount   = days.filter(function(d) { return d.morning && d.evening; }).length;
+        var workdays    = days.filter(function(d) { return !d.isWeekend; }).length;
+        var rate        = workdays > 0 ? Math.round(submitCount / workdays * 100) : 0;
+
+        var summaryHTML =
+          '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">' +
+            '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center">' +
+              '<div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--text-primary)">' + submitCount + '</div>' +
+              '<div style="font-size:11px;color:var(--text-muted);margin-top:3px">Ngày có morning</div>' +
+            '</div>' +
+            '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center">' +
+              '<div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:' + (rate >= 80 ? "var(--green)" : rate >= 50 ? "var(--accent)" : "var(--red)") + '">' + rate + '%</div>' +
+              '<div style="font-size:11px;color:var(--text-muted);margin-top:3px">Tỉ lệ submit</div>' +
+            '</div>' +
+            '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center">' +
+              '<div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--blue)">' + bothCount + '</div>' +
+              '<div style="font-size:11px;color:var(--text-muted);margin-top:3px">Đủ cả 2 buổi</div>' +
+            '</div>' +
+          '</div>';
+
+        var daysHTML = days.map(function(d) {
+          if (d.isWeekend) return "";
+          var mStatus = d.morning
+            ? '<span style="font-size:10px;background:var(--green-dim);color:var(--green);padding:2px 7px;border-radius:10px">☀️ ' + (d.morning["Submitted At"] || "submit") + '</span>'
+            : '<span style="font-size:10px;background:var(--red-dim);color:var(--red);padding:2px 7px;border-radius:10px">✗ Chưa</span>';
+          var eStatus = d.evening
+            ? '<span style="font-size:10px;background:var(--blue-dim);color:var(--blue);padding:2px 7px;border-radius:10px">🌙 ' + (d.evening["Submitted At"] || "submit") + '</span>'
+            : '<span style="font-size:10px;background:var(--bg-hover);color:var(--text-muted);padding:2px 7px;border-radius:10px">✗ Chưa</span>';
+
+          var tasksHTML = "";
+          if (d.morning) {
+            for (var ti = 1; ti <= 2; ti++) {
+              var title    = d.morning["Task " + ti]; if (!title) continue;
+              var expected = d.morning["Expected " + ti] || "—";
+              var steps    = d.morning["Steps " + ti] || "";
+              var prog     = d.evening ? (d.evening["Progress " + ti] || "") : "";
+              var spent    = d.evening ? (d.evening["TimeSpent " + ti] || "—") : "—";
+              var pc       = prog === "100%" ? "var(--green)" : prog && parseInt(prog) >= 60 ? "var(--accent)" : "var(--yellow)";
+              var stepsStr = "";
+              if (steps) {
+                stepsStr = "<div style='margin-top:4px;display:flex;flex-direction:column;gap:2px'>" +
+                  steps.split("|").map(function(s, si) {
+                    var t2 = s.trim().replace(/^\d+\.\s*/, "");
+                    var ai = t2.indexOf("→");
+                    var what = ai > -1 ? t2.slice(0, ai).trim() : t2;
+                    var out  = ai > -1 ? t2.slice(ai+1).trim() : "";
+                    return '<div style="font-size:10px;color:var(--text-muted)">' + (si+1) + '. ' + what + (out ? '<span style="color:var(--text-muted)"> → ' + out + '</span>' : '') + '</div>';
+                  }).join("") + "</div>";
+              }
+              tasksHTML +=
+                '<div style="margin-top:8px;padding:8px 10px;background:var(--bg-hover);border-radius:4px">' +
+                  '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">' +
+                    '<div style="flex:1">' +
+                      '<div style="font-size:12px;font-weight:500;color:var(--text-primary)">' + ti + '. ' + title + '</div>' +
+                      stepsStr +
+                    '</div>' +
+                    '<div style="flex-shrink:0;text-align:right">' +
+                      '<div style="font-size:10px;color:var(--text-muted)">Plan: ' + expected + '</div>' +
+                      (prog ? '<div style="font-size:11px;font-weight:600;color:' + pc + ';margin-top:2px">' + prog + '</div>' : '') +
+                      (spent !== "—" ? '<div style="font-size:10px;color:var(--text-muted)">Actual: ' + spent + '</div>' : '') +
+                    '</div>' +
+                  '</div>' +
+                '</div>';
+            }
+          }
+
+          return '<div style="border-bottom:1px solid var(--border);padding:12px 0">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">' +
+              '<div style="flex-shrink:0">' +
+                '<div style="font-size:12px;font-weight:600;color:var(--text-primary)">' + d.dayName + ' ' + d.lbl + '</div>' +
+              '</div>' +
+              '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">' +
+                mStatus + eStatus +
+              '</div>' +
+            '</div>' +
+            (tasksHTML ? '<div style="margin-top:6px">' + tasksHTML + '</div>' : '') +
+          '</div>';
+        }).join("");
+
+        return summaryHTML + '<div style="overflow-y:auto;flex:1">' + (daysHTML || '<div style="padding:20px;text-align:center;color:var(--text-muted)">Chưa có dữ liệu</div>') + '</div>';
+      }
+
+      var modal = document.createElement("div");
+      modal.id = "bd-member-modal";
+      modal.style.cssText = "position:fixed;inset:0;z-index:300;display:flex;align-items:flex-start;justify-content:flex-end";
+
+      var overlay = document.createElement("div");
+      overlay.style.cssText = "position:absolute;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(3px)";
+      overlay.addEventListener("click", function() { modal.remove(); });
+
+      var panel = document.createElement("div");
+      panel.style.cssText = "position:relative;z-index:1;width:460px;max-width:95vw;height:100vh;background:var(--bg-surface);border-left:1px solid var(--border-strong);display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(0,0,0,.4);animation:slideInRight .28s cubic-bezier(0.22,1,0.36,1)";
+
+      function renderPanel() {
+        panel.innerHTML =
+          "<style>@keyframes slideInRight{from{transform:translateX(100%)}to{transform:translateX(0)}}</style>" +
+          '<div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+            '<div>' +
+              '<p style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">' + memberName + '</p>' +
+              '<p style="font-size:11px;color:var(--text-muted);margin-top:2px">Lịch sử submit</p>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:8px">' +
+              '<div style="display:flex;background:var(--bg-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);overflow:hidden">' +
+                [7,14,30].map(function(r) {
+                  return '<button class="bd-range-btn" data-range="' + r + '" style="padding:5px 12px;border:none;background:' + (r === currentRange ? "var(--accent)" : "none") + ';color:' + (r === currentRange ? "#000" : "var(--text-muted)") + ';font-size:12px;font-weight:' + (r === currentRange ? "600" : "400") + ';cursor:pointer;font-family:var(--font-body);transition:all .15s">' + r + 'N</button>';
+                }).join("") +
+              '</div>' +
+              '<button id="bd-member-modal-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
+            '</div>' +
+          '</div>' +
+          '<div id="bd-member-modal-body" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column">' +
+            buildModalHTML(currentRange) +
+          '</div>';
+
+        panel.querySelector("#bd-member-modal-close").addEventListener("click", function() { modal.remove(); });
+        panel.querySelectorAll(".bd-range-btn").forEach(function(btn) {
+          btn.addEventListener("click", function() {
+            currentRange = parseInt(this.dataset.range);
+            renderPanel();
+          });
+        });
+      }
+
+      renderPanel();
+      modal.appendChild(overlay);
+      modal.appendChild(panel);
+      document.body.appendChild(modal);
+    };
+
     window._initBDTabs = function() {
       var tracking = document.getElementById("tab-tracking");
       var info     = document.getElementById("tab-info");
@@ -687,6 +842,14 @@ window.TOOL_REGISTRY.push({
         /* Insight FAB */
         var fab = document.getElementById("bd-insight-fab");
         if (fab) fab.addEventListener("click", function() { _bdOpenInsightPanel(window._bdData || {}, false); });
+
+        /* Member name click → history modal */
+        document.querySelectorAll(".bd-member-name-btn").forEach(function(btn) {
+          btn.addEventListener("click", function(e) {
+            e.stopPropagation();
+            window._bdOpenMemberHistory(btn.dataset.member);
+          });
+        });
       }, 50);
 
       document.querySelectorAll(".tab-btn").forEach(function(btn) {
@@ -702,6 +865,13 @@ window.TOOL_REGISTRY.push({
                 var sel = document.getElementById("bd-chart-range");
                 window._buildBDChart(sel ? parseInt(sel.value) : 7);
               }
+              /* Re-bind sau khi switch tab */
+              document.querySelectorAll(".bd-member-name-btn").forEach(function(b) {
+                b.addEventListener("click", function(e) {
+                  e.stopPropagation();
+                  window._bdOpenMemberHistory(b.dataset.member);
+                });
+              });
             }, 50);
           }
         });
