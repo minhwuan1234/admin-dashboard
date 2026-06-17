@@ -1,14 +1,15 @@
-/* ══════════════════════════════════════════════════════════════
+/* --------------------------------------------------------------
    TOOL CONFIG: BD-MKT Daily Report
    ══════════════════════════════════════════════════════════════ */
 
 window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
-/* ── Worker URL ── */
+/* -- Worker URL -- */
 var _BD_WORKER_URL = "https://admin-dashboard.minhwuan889.workers.dev/";
-/* ── OpenAI config ── */
 
-/* ── ISO week helper ── */
+/* -- OpenAI config -- */
+
+/* -- ISO week helper -- */
 function _bdGetISOWeek(date) {
   var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   var day = d.getUTCDay() || 7;
@@ -18,7 +19,7 @@ function _bdGetISOWeek(date) {
   return d.getUTCFullYear() + "-W" + String(week).padStart(2, "0");
 }
 
-/* ── Aggregate BD-MKT data → summary payload ── */
+/* -- Aggregate BD-MKT data -> summary payload -- */
 function _bdAggregate(data) {
   var week    = _bdGetISOWeek(new Date());
   var allRows = data.allRows || [];
@@ -38,7 +39,7 @@ function _bdAggregate(data) {
     });
   }
 
-  /* Member consistency — bao nhiêu ngày submit cả 2 trong 7 ngày qua */
+  /* Member consistency - bao nhi?u ng?y submit c? 2 trong 7 ng?y qua */
   var memberConsistency = {};
   (data.memberNames || []).forEach(function(name) {
     var bothDays = last7.filter(function(day) {
@@ -54,7 +55,7 @@ function _bdAggregate(data) {
     memberConsistency[name] = { bothDays: bothDays, morningOnly: morningOnly, outOf: 7 };
   });
 
-  /* Plan vs actual gap — so sánh expected time vs actual time spent */
+  /* Plan vs actual gap - so s?nh expected time vs actual time spent */
   var planActualGap = { onTrack: 0, over: 0, under: 0, noData: 0 };
   allRows.forEach(function(r) {
     if (r["Type"] !== "evening") return;
@@ -102,7 +103,7 @@ function _bdAggregate(data) {
   };
 }
 
-/* ── Call OpenAI API ── */
+/* -- Call OpenAI API -- */
 async function _bdCallOpenAI(summary) {
   var sysPrompt = 'Bạn là PM assistant của F.Learning Studio, phụ trách team BD-MKT. Nhận vào data daily report (morning plan + evening actual) của team, phân tích và trả về insight bằng tiếng Việt. Trả về JSON THUẦN TÚY, không thêm gì ngoài JSON. Format: {"summary":"Tổng quan 1-2 câu về tình hình submit hôm nay","highlights":[{"type":"positive|warning|neutral","text":"Điểm đáng chú ý ngắn gọn"}],"morningEveningGap":"Nhận xét về chênh lệch giữa morning và evening submit rate — nguyên nhân có thể là gì","planActualInsight":"Nhận xét về plan vs actual execution: team có đang over hoặc under estimate không","consistencyInsight":"Nhận xét về mức độ consistent khi submit cả 2 buổi trong tuần","weeklyTrend":"Xu hướng submit so với tuần trước","recommendations":["Cách cụ thể để tăng tỉ lệ submit cả morning lẫn evening — thay đổi workflow, reminder, hoặc form"],"toolUsage":"Mô tả cách team BD-MKT đang sử dụng daily report tool và mức độ hiệu quả thực tế","frictions":"Các friction cụ thể đang làm giảm tỉ lệ submit morning/evening — dựa trên pattern trong data","adjustments":"Đề xuất điều chỉnh cụ thể để tăng tỉ lệ submit cả 2 buổi: thời điểm nhắc, độ dài form, quy trình"}. Highlights tối đa 4. Recommendations tối đa 3. Không nêu tên cá nhân. Mọi nhận xét phải dựa trên số liệu thực tế.';
 
@@ -132,7 +133,7 @@ function _bdCacheKey() {
   return "bd_insight_" + _bdGetISOWeek(new Date());
 }
 
-/* ── Render insight panel HTML ── */
+/* -- Render insight panel HTML -- */
 function _bdRenderInsightHTML(insight, week, isCache) {
   var typeIcon  = { positive: "ti-trending-up", warning: "ti-alert-triangle", neutral: "ti-info-circle" };
   var typeColor = { positive: "var(--green)", warning: "var(--accent)", neutral: "var(--blue)" };
@@ -304,7 +305,7 @@ function _bdClosePanel(panel, overlay) {
   overlay.style.display = "none";
 }
 
-/* ══════════════════════════════════════════════════════════════ */
+/* -------------------------------------------------------------- */
 
 window.TOOL_REGISTRY.push({
   id:          "bd-mkt-daily",
@@ -368,7 +369,7 @@ window.TOOL_REGISTRY.push({
         var title = r["Task " + i]; if (!title) continue;
         tasks.push({ title: title, output: r["Output " + i] || "—", expectedTime: r["Expected " + i] || "—", progress: r["Progress " + i] || "—", timeSpent: r["TimeSpent "+ i] || "—" });
       }
-      // Parse steps từ cột Steps N (dạng "1. Bước → Output | 2. Bước → Output")
+      // Parse steps t? c?t Steps N (d?ng "1. B??c -> Output | 2. B??c -> Output")
       for (var ti2 = 0; ti2 < tasks.length; ti2++) {
         var stepsRaw = r["Steps " + (ti2 + 1)] || "";
         if (stepsRaw) {
@@ -842,7 +843,7 @@ window.TOOL_REGISTRY.push({
         var fab = document.getElementById("bd-insight-fab");
         if (fab) fab.addEventListener("click", function() { _bdOpenInsightPanel(window._bdData || {}, false); });
 
-        /* Member name click → history modal */
+        /* Member name click -> history modal */
         document.querySelectorAll(".bd-member-name-btn").forEach(function(btn) {
           btn.addEventListener("click", function(e) {
             e.stopPropagation();
