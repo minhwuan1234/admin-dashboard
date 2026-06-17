@@ -348,9 +348,13 @@ window.TOOL_REGISTRY.push({
 
     var lines   = csv.split("\n").filter(function(l) { return l.trim(); });
     var headers = splitCSVLine(lines[0]);
+    // gviz/tq đổi cột Date thành "x" khi là Date object — normalize lại
+    var normalizedHeaders = headers.map(function(h) {
+      return h.trim() === "x" ? "Date" : h.trim();
+    });
     var rows    = lines.slice(1).map(function(line) {
       var vals = splitCSVLine(line), obj = {};
-      headers.forEach(function(h, i) { obj[h.trim()] = (vals[i] || "").trim(); });
+      normalizedHeaders.forEach(function(h, i) { obj[h] = (vals[i] || "").trim(); });
       return obj;
     }).filter(function(r) { return r["Date"] && r["Member"]; });
 
