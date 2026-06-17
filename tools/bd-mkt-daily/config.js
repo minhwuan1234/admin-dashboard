@@ -672,7 +672,7 @@ window.TOOL_REGISTRY.push({
     window._bdTrackingHTML = statsHTML + chartHTML + membersHTML;
     window._bdInfoHTML     = infoHTML;
 
-    /* ── Member History Modal ───────────────────────────────── */
+    /* -- Member History Modal -- */
     window._bdOpenMemberHistory = function(memberName) {
       var allRows  = (window._bdData && window._bdData.allRows) || [];
       var existing = document.getElementById("bd-member-modal");
