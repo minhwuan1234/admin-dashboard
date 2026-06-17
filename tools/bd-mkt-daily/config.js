@@ -324,15 +324,35 @@ window.TOOL_REGISTRY.push({
   },
 
   fetchData: async function(utils) {
-    var APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxL75ubj_XoVKx4ytqU4DzP1bluBEq4hYlZDuIllcmm3U8Dxbux8TL7IT4By4qFsSJm/exec";
+    var SHEET_ID   = "1j-18C2hBM8Lvxz-sgDtLQ8KSeFTjxAyJ1CUGXiOcvvQ";
+    var SHEET_NAME = "BD-MKT-L&D-Daily Report";
     var MEMBERS    = this._MEMBERS;
 
-    var res = await fetch(APPS_SCRIPT_URL + "?t=" + Date.now());
-    if (!res.ok) throw new Error("Apps Script error: " + res.status);
-    var json = await res.json();
-    if (!json.ok) throw new Error("Apps Script returned error: " + (json.error || "unknown"));
+    var url = "https://docs.google.com/spreadsheets/d/" + SHEET_ID +
+              "/gviz/tq?tqx=out:csv&sheet=" + encodeURIComponent(SHEET_NAME) + "&t=" + Date.now();
 
-    var rows = (json.data || []).filter(function(r) { return r["Date"] && r["Member"]; });
+    var res = await fetch(url);
+    if (!res.ok) throw new Error("Sheets CSV error: " + res.status);
+    var csv = await res.text();
+
+    function splitCSVLine(line) {
+      var res=[], cur="", inQ=false;
+      for (var i=0; i<line.length; i++) {
+        var c = line[i];
+        if (c==='"') { if (inQ && line[i+1]==='"') { cur+='"'; i++; } else inQ=!inQ; }
+        else if (c===',' && !inQ) { res.push(cur); cur=""; }
+        else cur+=c;
+      }
+      res.push(cur); return res;
+    }
+
+    var lines   = csv.split("\n").filter(function(l) { return l.trim(); });
+    var headers = splitCSVLine(lines[0]);
+    var rows    = lines.slice(1).map(function(line) {
+      var vals = splitCSVLine(line), obj = {};
+      headers.forEach(function(h, i) { obj[h.trim()] = (vals[i] || "").trim(); });
+      return obj;
+    }).filter(function(r) { return r["Date"] && r["Member"]; });
 
     var memberNames  = Object.values(MEMBERS);
     var totalMembers = memberNames.length;
