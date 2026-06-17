@@ -348,7 +348,7 @@ window.TOOL_REGISTRY.push({
 
     var lines   = csv.split("\n").filter(function(l) { return l.trim(); });
     var headers = splitCSVLine(lines[0]);
-    // gviz/tq đổi cột Date thành "x" khi là Date object — normalize lại
+    // gviz/tq ??i c?t Date th?nh "x" khi l? Date object - normalize l?i
     var normalizedHeaders = headers.map(function(h) {
       return h.trim() === "x" ? "Date" : h.trim();
     });
@@ -682,42 +682,148 @@ window.TOOL_REGISTRY.push({
       var existing = document.getElementById("bd-member-modal");
       if (existing) existing.remove();
 
-      var RANGES = [7, 14, 30];
+      var currentTab   = "days";
       var currentRange = 14;
+      var currentMonth = (function() {
+        var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+        return { y: now.getFullYear(), m: now.getMonth() };
+      })();
 
-      function buildModalHTML(range) {
+      /* -- Helpers -- */
+      function dateStr(d) {
+        return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+      }
+      function getMemberRows(ds) {
+        return allRows.filter(function(r) { return r["Date"] === ds && r["Member"] === memberName; });
+      }
+      function isWeekend(d) { return d.getDay() === 0 || d.getDay() === 6; }
+
+      /* -- Dashboard mini stats -- */
+      function buildMiniDashboard() {
+        var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+
+        // Thang nay
+        var y = now.getFullYear(), m = now.getMonth();
+        var daysInMonth = new Date(y, m+1, 0).getDate();
+        var monthWorkdays = 0, monthSubmit = 0, monthBoth = 0;
+        for (var di = 1; di <= daysInMonth; di++) {
+          var d = new Date(y, m, di);
+          if (isWeekend(d)) continue;
+          monthWorkdays++;
+          var rows = getMemberRows(dateStr(d));
+          var hasMorning = rows.some(function(r) { return r["Type"] === "morning"; });
+          var hasEvening = rows.some(function(r) { return r["Type"] === "evening"; });
+          if (hasMorning) monthSubmit++;
+          if (hasMorning && hasEvening) monthBoth++;
+        }
+        var monthRate = monthWorkdays > 0 ? Math.round(monthSubmit / monthWorkdays * 100) : 0;
+
+        // Streak hien tai
+        var streak = 0;
+        var check = new Date(now);
+        while (true) {
+          if (isWeekend(check)) { check.setDate(check.getDate() - 1); continue; }
+          var rows2 = getMemberRows(dateStr(check));
+          if (rows2.some(function(r) { return r["Type"] === "morning"; })) {
+            streak++;
+            check.setDate(check.getDate() - 1);
+          } else { break; }
+        }
+
+        // Ngay hay miss nhat (7 ngay qua)
+        var missDays = { "T2":0,"T3":0,"T4":0,"T5":0,"T6":0 };
+        var dayNames = ["CN","T2","T3","T4","T5","T6","T7"];
+        for (var i = 1; i <= 30; i++) {
+          var d2 = new Date(now); d2.setDate(d2.getDate() - i);
+          if (isWeekend(d2)) continue;
+          var dn = dayNames[d2.getDay()];
+          var rows3 = getMemberRows(dateStr(d2));
+          if (!rows3.some(function(r) { return r["Type"] === "morning"; })) {
+            missDays[dn] = (missDays[dn] || 0) + 1;
+          }
+        }
+        var mostMissDay = Object.keys(missDays).reduce(function(a, b) { return missDays[a] > missDays[b] ? a : b; }, "T2");
+        var mostMissCount = missDays[mostMissDay];
+
+        // Lan submit gan nhat
+        var lastSubmit = "—";
+        for (var i2 = 0; i2 < 30; i2++) {
+          var d3 = new Date(now); d3.setDate(d3.getDate() - i2);
+          var rows4 = getMemberRows(dateStr(d3));
+          if (rows4.some(function(r) { return r["Type"] === "morning"; })) {
+            lastSubmit = i2 === 0 ? "Hôm nay" : i2 === 1 ? "Hôm qua" : i2 + " ngày trước";
+            break;
+          }
+        }
+
+        var rateColor = monthRate >= 80 ? "var(--green)" : monthRate >= 50 ? "var(--accent)" : "var(--red)";
+
+        return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;margin-bottom:16px">' +
+          '<p style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:12px">Dashboard tháng này</p>' +
+          '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">' +
+            '<div style="text-align:center;padding:10px 6px;background:var(--bg-surface);border-radius:6px">' +
+              '<div style="font-size:20px;font-weight:700;color:' + rateColor + '">' + monthRate + '%</div>' +
+              '<div style="font-size:10px;color:var(--text-muted);margin-top:2px">Tỉ lệ tháng</div>' +
+            '</div>' +
+            '<div style="text-align:center;padding:10px 6px;background:var(--bg-surface);border-radius:6px">' +
+              '<div style="font-size:20px;font-weight:700;color:var(--accent)">' + streak + '</div>' +
+              '<div style="font-size:10px;color:var(--text-muted);margin-top:2px">Streak 🔥</div>' +
+            '</div>' +
+            '<div style="text-align:center;padding:10px 6px;background:var(--bg-surface);border-radius:6px">' +
+              '<div style="font-size:20px;font-weight:700;color:var(--blue)">' + monthBoth + '</div>' +
+              '<div style="font-size:10px;color:var(--text-muted);margin-top:2px">Cả 2 buổi</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+            '<div style="padding:8px 10px;background:var(--bg-surface);border-radius:6px;display:flex;align-items:center;justify-content:space-between">' +
+              '<span style="font-size:10px;color:var(--text-muted)">Hay miss nhất</span>' +
+              '<span style="font-size:11px;font-weight:600;color:' + (mostMissCount > 0 ? "var(--red)" : "var(--green)") + '">' + (mostMissCount > 0 ? mostMissDay + " (" + mostMissCount + "x)" : "Không có") + '</span>' +
+            '</div>' +
+            '<div style="padding:8px 10px;background:var(--bg-surface);border-radius:6px;display:flex;align-items:center;justify-content:space-between">' +
+              '<span style="font-size:10px;color:var(--text-muted)">Submit gần nhất</span>' +
+              '<span style="font-size:11px;font-weight:600;color:var(--text-primary)">' + lastSubmit + '</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }
+
+      /* -- Tab Ngay: list theo range -- */
+      function buildDaysTab(range) {
         var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
         var days = [];
         for (var i = range - 1; i >= 0; i--) {
           var d = new Date(now); d.setDate(d.getDate() - i);
-          var ds = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-          var lbl = String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0");
+          var ds = dateStr(d);
           var dayName = ["CN","T2","T3","T4","T5","T6","T7"][d.getDay()];
-          var isWeekend = d.getDay() === 0 || d.getDay() === 6;
-          var memberRows = allRows.filter(function(r) { return r["Date"] === ds && r["Member"] === memberName; });
-          var morning = memberRows.find(function(r) { return r["Type"] === "morning"; });
-          var evening = memberRows.find(function(r) { return r["Type"] === "evening"; });
-          days.push({ ds: ds, lbl: lbl, dayName: dayName, isWeekend: isWeekend, morning: morning, evening: evening });
+          var rows = getMemberRows(ds);
+          days.push({
+            ds: ds,
+            lbl: String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0"),
+            dayName: dayName,
+            isWeekend: isWeekend(d),
+            morning: rows.find(function(r) { return r["Type"] === "morning"; }),
+            evening: rows.find(function(r) { return r["Type"] === "evening"; })
+          });
         }
 
-        var submitCount = days.filter(function(d) { return d.morning; }).length;
-        var bothCount   = days.filter(function(d) { return d.morning && d.evening; }).length;
+        var submitCount = days.filter(function(d) { return !d.isWeekend && d.morning; }).length;
+        var bothCount   = days.filter(function(d) { return !d.isWeekend && d.morning && d.evening; }).length;
         var workdays    = days.filter(function(d) { return !d.isWeekend; }).length;
         var rate        = workdays > 0 ? Math.round(submitCount / workdays * 100) : 0;
 
-        var summaryHTML =
-          '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">' +
-            '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center">' +
-              '<div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--text-primary)">' + submitCount + '</div>' +
-              '<div style="font-size:11px;color:var(--text-muted);margin-top:3px">Ngày có morning</div>' +
+        var statsRow =
+          '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">' +
+            '<div style="text-align:center;padding:8px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">' +
+              '<div style="font-size:18px;font-weight:700;color:var(--text-primary)">' + submitCount + '</div>' +
+              '<div style="font-size:10px;color:var(--text-muted)">Ngày có morning</div>' +
             '</div>' +
-            '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center">' +
-              '<div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:' + (rate >= 80 ? "var(--green)" : rate >= 50 ? "var(--accent)" : "var(--red)") + '">' + rate + '%</div>' +
-              '<div style="font-size:11px;color:var(--text-muted);margin-top:3px">Tỉ lệ submit</div>' +
+            '<div style="text-align:center;padding:8px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">' +
+              '<div style="font-size:18px;font-weight:700;color:' + (rate >= 80 ? "var(--green)" : rate >= 50 ? "var(--accent)" : "var(--red)") + '">' + rate + '%</div>' +
+              '<div style="font-size:10px;color:var(--text-muted)">Tỉ lệ submit</div>' +
             '</div>' +
-            '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center">' +
-              '<div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--blue)">' + bothCount + '</div>' +
-              '<div style="font-size:11px;color:var(--text-muted);margin-top:3px">Đủ cả 2 buổi</div>' +
+            '<div style="text-align:center;padding:8px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">' +
+              '<div style="font-size:18px;font-weight:700;color:var(--blue)">' + bothCount + '</div>' +
+              '<div style="font-size:10px;color:var(--text-muted)">Đủ cả 2 buổi</div>' +
             '</div>' +
           '</div>';
 
@@ -733,12 +839,12 @@ window.TOOL_REGISTRY.push({
           var tasksHTML = "";
           if (d.morning) {
             for (var ti = 1; ti <= 2; ti++) {
-              var title    = d.morning["Task " + ti]; if (!title) continue;
+              var title = d.morning["Task " + ti]; if (!title) continue;
               var expected = d.morning["Expected " + ti] || "—";
               var steps    = d.morning["Steps " + ti] || "";
               var prog     = d.evening ? (d.evening["Progress " + ti] || "") : "";
               var spent    = d.evening ? (d.evening["TimeSpent " + ti] || "—") : "—";
-              var pc       = prog === "100%" ? "var(--green)" : prog && parseInt(prog) >= 60 ? "var(--accent)" : "var(--yellow)";
+              var pc = prog === "100%" ? "var(--green)" : prog && parseInt(prog) >= 60 ? "var(--accent)" : "var(--yellow)";
               var stepsStr = "";
               if (steps) {
                 stepsStr = "<div style='margin-top:4px;display:flex;flex-direction:column;gap:2px'>" +
@@ -747,42 +853,152 @@ window.TOOL_REGISTRY.push({
                     var ai = t2.indexOf("→");
                     var what = ai > -1 ? t2.slice(0, ai).trim() : t2;
                     var out  = ai > -1 ? t2.slice(ai+1).trim() : "";
-                    return '<div style="font-size:10px;color:var(--text-muted)">' + (si+1) + '. ' + what + (out ? '<span style="color:var(--text-muted)"> → ' + out + '</span>' : '') + '</div>';
+                    return '<div style="font-size:10px;color:var(--text-muted)">' + (si+1) + '. ' + what + (out ? ' → ' + out : '') + '</div>';
                   }).join("") + "</div>";
               }
               tasksHTML +=
-                '<div style="margin-top:8px;padding:8px 10px;background:var(--bg-hover);border-radius:4px">' +
+                '<div style="margin-top:6px;padding:7px 9px;background:var(--bg-hover);border-radius:4px">' +
                   '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">' +
-                    '<div style="flex:1">' +
-                      '<div style="font-size:12px;font-weight:500;color:var(--text-primary)">' + ti + '. ' + title + '</div>' +
-                      stepsStr +
-                    '</div>' +
+                    '<div style="flex:1"><div style="font-size:11px;font-weight:500;color:var(--text-primary)">' + ti + '. ' + title + '</div>' + stepsStr + '</div>' +
                     '<div style="flex-shrink:0;text-align:right">' +
                       '<div style="font-size:10px;color:var(--text-muted)">Plan: ' + expected + '</div>' +
-                      (prog ? '<div style="font-size:11px;font-weight:600;color:' + pc + ';margin-top:2px">' + prog + '</div>' : '') +
-                      (spent !== "—" ? '<div style="font-size:10px;color:var(--text-muted)">Actual: ' + spent + '</div>' : '') +
+                      (prog ? '<div style="font-size:11px;font-weight:600;color:' + pc + ';margin-top:1px">' + prog + '</div>' : '') +
+                      (spent !== "—" ? '<div style="font-size:10px;color:var(--text-muted)">' + spent + '</div>' : '') +
                     '</div>' +
                   '</div>' +
                 '</div>';
             }
           }
 
-          return '<div style="border-bottom:1px solid var(--border);padding:12px 0">' +
-            '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">' +
-              '<div style="flex-shrink:0">' +
-                '<div style="font-size:12px;font-weight:600;color:var(--text-primary)">' + d.dayName + ' ' + d.lbl + '</div>' +
-              '</div>' +
-              '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">' +
-                mStatus + eStatus +
-              '</div>' +
+          return '<div style="border-bottom:1px solid var(--border);padding:10px 0">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">' +
+              '<div style="font-size:12px;font-weight:600;color:var(--text-primary);flex-shrink:0">' + d.dayName + ' ' + d.lbl + '</div>' +
+              '<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;justify-content:flex-end">' + mStatus + eStatus + '</div>' +
             '</div>' +
-            (tasksHTML ? '<div style="margin-top:6px">' + tasksHTML + '</div>' : '') +
+            (tasksHTML ? '<div style="margin-top:4px">' + tasksHTML + '</div>' : '') +
           '</div>';
         }).join("");
 
-        return summaryHTML + '<div style="overflow-y:auto;flex:1">' + (daysHTML || '<div style="padding:20px;text-align:center;color:var(--text-muted)">Chưa có dữ liệu</div>') + '</div>';
+        return statsRow + (daysHTML || '<div style="padding:20px;text-align:center;color:var(--text-muted)">Chưa có dữ liệu</div>');
       }
 
+      /* -- Tab Thang: calendar + bar chart theo tuan -- */
+      function buildMonthTab(y, m) {
+        var monthName = ["Tháng 1","Tháng 2","Tháng 3","Tháng 4","Tháng 5","Tháng 6","Tháng 7","Tháng 8","Tháng 9","Tháng 10","Tháng 11","Tháng 12"][m];
+        var daysInMonth = new Date(y, m+1, 0).getDate();
+        var firstDay = new Date(y, m, 1).getDay();
+        var dayNames = ["CN","T2","T3","T4","T5","T6","T7"];
+
+        // Build calendar data
+        var calData = {};
+        for (var di = 1; di <= daysInMonth; di++) {
+          var d = new Date(y, m, di);
+          var ds = dateStr(d);
+          var rows = getMemberRows(ds);
+          calData[di] = {
+            morning: rows.some(function(r) { return r["Type"] === "morning"; }),
+            evening: rows.some(function(r) { return r["Type"] === "evening"; }),
+            isWeekend: isWeekend(d)
+          };
+        }
+
+        // Calendar grid
+        var calCells = "";
+        dayNames.forEach(function(n) {
+          calCells += '<div style="font-size:10px;font-weight:600;color:var(--text-muted);text-align:center;padding:4px 0">' + n + '</div>';
+        });
+        // Empty cells truoc ngay 1
+        var startDay = firstDay === 0 ? 6 : firstDay - 1; // Mon=0
+        // Doi sang Mon-start
+        var startDayAdj = new Date(y, m, 1).getDay();
+        startDayAdj = startDayAdj === 0 ? 6 : startDayAdj - 1;
+        for (var e = 0; e < startDayAdj; e++) {
+          calCells += '<div></div>';
+        }
+        for (var di2 = 1; di2 <= daysInMonth; di2++) {
+          var cd = calData[di2];
+          var bg, border;
+          if (cd.isWeekend) {
+            bg = "transparent"; border = "none";
+          } else if (cd.morning && cd.evening) {
+            bg = "var(--green-dim)"; border = "1px solid var(--green)";
+          } else if (cd.morning) {
+            bg = "var(--accent-dim)"; border = "1px solid var(--accent)";
+          } else {
+            bg = "var(--red-dim)"; border = "1px solid transparent";
+          }
+          var dot = cd.isWeekend ? "" :
+            (cd.morning && cd.evening ? '<div style="width:4px;height:4px;border-radius:50%;background:var(--green);margin:1px auto 0"></div>' :
+             cd.morning ? '<div style="width:4px;height:4px;border-radius:50%;background:var(--accent);margin:1px auto 0"></div>' :
+             '<div style="width:4px;height:4px;border-radius:50%;background:var(--red);margin:1px auto 0"></div>');
+          calCells += '<div style="background:' + bg + ';border:' + border + ';border-radius:4px;padding:4px 2px;text-align:center;' + (cd.isWeekend ? 'opacity:.3' : '') + '">' +
+            '<div style="font-size:11px;font-weight:500;color:var(--text-primary)">' + di2 + '</div>' +
+            dot +
+          '</div>';
+        }
+
+        // Bar chart theo tuan
+        var weeks = [];
+        var wIdx = 0;
+        for (var di3 = 1; di3 <= daysInMonth; di3++) {
+          var d3 = new Date(y, m, di3);
+          if (!weeks[wIdx]) weeks[wIdx] = { morning: 0, evening: 0, workdays: 0 };
+          if (!isWeekend(d3)) {
+            weeks[wIdx].workdays++;
+            var cd3 = calData[di3];
+            if (cd3.morning) weeks[wIdx].morning++;
+            if (cd3.evening) weeks[wIdx].evening++;
+          }
+          if (d3.getDay() === 0 && di3 < daysInMonth) wIdx++;
+        }
+
+        var barHTML = weeks.map(function(w, wi) {
+          if (w.workdays === 0) return "";
+          var mPct = Math.round(w.morning / w.workdays * 100);
+          var ePct = Math.round(w.evening / w.workdays * 100);
+          return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">' +
+            '<div style="width:100%;display:flex;gap:2px;align-items:flex-end;height:48px">' +
+              '<div style="flex:1;background:var(--accent);border-radius:2px 2px 0 0;height:' + Math.max(mPct, 4) + '%;opacity:.85"></div>' +
+              '<div style="flex:1;background:var(--blue);border-radius:2px 2px 0 0;height:' + Math.max(ePct, 4) + '%;opacity:.85"></div>' +
+            '</div>' +
+            '<div style="font-size:9px;color:var(--text-muted)">T' + (wi+1) + '</div>' +
+            '<div style="font-size:9px;color:var(--text-muted)">' + mPct + '/' + ePct + '%</div>' +
+          '</div>';
+        }).join("");
+
+        // Legend
+        var totalWork = Object.values(calData).filter(function(d) { return !d.isWeekend; }).length;
+        var totalMorn = Object.values(calData).filter(function(d) { return !d.isWeekend && d.morning; }).length;
+        var totalBoth = Object.values(calData).filter(function(d) { return !d.isWeekend && d.morning && d.evening; }).length;
+        var mRate = totalWork > 0 ? Math.round(totalMorn / totalWork * 100) : 0;
+
+        return '<div>' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+            '<p style="font-size:13px;font-weight:600;color:var(--text-primary)">' + monthName + ' ' + y + '</p>' +
+            '<div style="display:flex;gap:8px">' +
+              '<span style="font-size:11px;font-weight:700;color:' + (mRate >= 80 ? "var(--green)" : mRate >= 50 ? "var(--accent)" : "var(--red)") + '">' + mRate + '%</span>' +
+              '<span style="font-size:11px;color:var(--text-muted)">' + totalMorn + '/' + totalWork + ' ngày</span>' +
+              '<span style="font-size:11px;color:var(--blue)">' + totalBoth + ' cả 2</span>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:16px">' + calCells + '</div>' +
+          '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">' +
+            '<span style="font-size:10px;color:var(--text-muted)">Theo tuần:</span>' +
+            '<div style="display:flex;gap:6px;align-items:center;font-size:9px;color:var(--text-muted)">' +
+              '<span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;background:var(--accent);border-radius:1px;display:inline-block"></span>Morning</span>' +
+              '<span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;background:var(--blue);border-radius:1px;display:inline-block"></span>Evening</span>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:4px;align-items:flex-end;height:60px;margin-bottom:12px">' + barHTML + '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:10px;color:var(--text-muted)">' +
+            '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:var(--green-dim);border:1px solid var(--green);border-radius:2px;display:inline-block"></span>Cả 2 buổi</span>' +
+            '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:2px;display:inline-block"></span>Morning only</span>' +
+            '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:var(--red-dim);border-radius:2px;display:inline-block"></span>Chưa submit</span>' +
+          '</div>' +
+        '</div>';
+      }
+
+      /* -- Modal DOM -- */
       var modal = document.createElement("div");
       modal.id = "bd-member-modal";
       modal.style.cssText = "position:fixed;inset:0;z-index:300;display:flex;align-items:flex-start;justify-content:flex-end";
@@ -792,35 +1008,84 @@ window.TOOL_REGISTRY.push({
       overlay.addEventListener("click", function() { modal.remove(); });
 
       var panel = document.createElement("div");
-      panel.style.cssText = "position:relative;z-index:1;width:460px;max-width:95vw;height:100vh;background:var(--bg-surface);border-left:1px solid var(--border-strong);display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(0,0,0,.4);animation:slideInRight .28s cubic-bezier(0.22,1,0.36,1)";
+      panel.style.cssText = "position:relative;z-index:1;width:500px;max-width:95vw;height:100vh;background:var(--bg-surface);border-left:1px solid var(--border-strong);display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(0,0,0,.4);animation:slideInRight .28s cubic-bezier(0.22,1,0.36,1)";
 
       function renderPanel() {
+        var now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+        var monthLabel = ["Th1","Th2","Th3","Th4","Th5","Th6","Th7","Th8","Th9","Th10","Th11","Th12"][currentMonth.m] + "/" + currentMonth.y;
+
         panel.innerHTML =
           "<style>@keyframes slideInRight{from{transform:translateX(100%)}to{transform:translateX(0)}}</style>" +
-          '<div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--border);flex-shrink:0">' +
+          // Header
+          '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0">' +
             '<div>' +
               '<p style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text-primary)">' + memberName + '</p>' +
-              '<p style="font-size:11px;color:var(--text-muted);margin-top:2px">Lịch sử submit</p>' +
+              '<p style="font-size:11px;color:var(--text-muted);margin-top:1px">Lịch sử submit</p>' +
             '</div>' +
-            '<div style="display:flex;align-items:center;gap:8px">' +
-              '<div style="display:flex;background:var(--bg-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);overflow:hidden">' +
-                [7,14,30].map(function(r) {
-                  return '<button class="bd-range-btn" data-range="' + r + '" style="padding:5px 12px;border:none;background:' + (r === currentRange ? "var(--accent)" : "none") + ';color:' + (r === currentRange ? "#000" : "var(--text-muted)") + ';font-size:12px;font-weight:' + (r === currentRange ? "600" : "400") + ';cursor:pointer;font-family:var(--font-body);transition:all .15s">' + r + 'N</button>';
-                }).join("") +
-              '</div>' +
-              '<button id="bd-member-modal-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
-            '</div>' +
+            '<button id="bd-member-modal-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;display:flex;align-items:center"><i class="ti ti-x"></i></button>' +
           '</div>' +
-          '<div id="bd-member-modal-body" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column">' +
-            buildModalHTML(currentRange) +
+          // Tab bar
+          '<div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0">' +
+            '<button class="bd-tab-switch" data-tab="days" style="flex:1;padding:10px;border:none;background:none;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-body);color:' + (currentTab === "days" ? "var(--accent)" : "var(--text-muted)") + ';border-bottom:2px solid ' + (currentTab === "days" ? "var(--accent)" : "transparent") + ';transition:all .15s">Theo ngày</button>' +
+            '<button class="bd-tab-switch" data-tab="month" style="flex:1;padding:10px;border:none;background:none;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-body);color:' + (currentTab === "month" ? "var(--accent)" : "var(--text-muted)") + ';border-bottom:2px solid ' + (currentTab === "month" ? "var(--accent)" : "transparent") + ';transition:all .15s">Theo tháng</button>' +
+          '</div>' +
+          // Body
+          '<div id="bd-member-modal-body" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column">' +
+            buildMiniDashboard() +
+            (currentTab === "days"
+              ? // Range selector + days
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+                  '<p style="font-size:11px;font-weight:600;color:var(--text-muted)">Lịch sử gần đây</p>' +
+                  '<div style="display:flex;background:var(--bg-card);border:1px solid var(--border-strong);border-radius:var(--radius-sm);overflow:hidden">' +
+                    [7,14,30].map(function(r) {
+                      return '<button class="bd-range-btn" data-range="' + r + '" style="padding:4px 10px;border:none;background:' + (r === currentRange ? "var(--accent)" : "none") + ';color:' + (r === currentRange ? "#000" : "var(--text-muted)") + ';font-size:11px;font-weight:' + (r === currentRange ? "600" : "400") + ';cursor:pointer;font-family:var(--font-body)">' + r + 'N</button>';
+                    }).join("") +
+                  '</div>' +
+                '</div>' +
+                buildDaysTab(currentRange)
+              : // Month nav + calendar
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+                  '<p style="font-size:11px;font-weight:600;color:var(--text-muted)">' + monthLabel + '</p>' +
+                  '<div style="display:flex;gap:4px">' +
+                    '<button id="bd-month-prev" style="background:var(--bg-card);border:1px solid var(--border-strong);border-radius:4px;width:28px;height:28px;cursor:pointer;color:var(--text-muted);font-size:13px;display:flex;align-items:center;justify-content:center"><i class="ti ti-chevron-left"></i></button>' +
+                    '<button id="bd-month-next" style="background:var(--bg-card);border:1px solid var(--border-strong);border-radius:4px;width:28px;height:28px;cursor:pointer;color:var(--text-muted);font-size:13px;display:flex;align-items:center;justify-content:center"><i class="ti ti-chevron-right"></i></button>' +
+                  '</div>' +
+                '</div>' +
+                buildMonthTab(currentMonth.y, currentMonth.m)
+            ) +
           '</div>';
 
+        // Events
         panel.querySelector("#bd-member-modal-close").addEventListener("click", function() { modal.remove(); });
-        panel.querySelectorAll(".bd-range-btn").forEach(function(btn) {
+
+        panel.querySelectorAll(".bd-tab-switch").forEach(function(btn) {
           btn.addEventListener("click", function() {
-            currentRange = parseInt(this.dataset.range);
+            currentTab = btn.dataset.tab;
             renderPanel();
           });
+        });
+
+        panel.querySelectorAll(".bd-range-btn").forEach(function(btn) {
+          btn.addEventListener("click", function() {
+            currentRange = parseInt(btn.dataset.range);
+            renderPanel();
+          });
+        });
+
+        var prevBtn = panel.querySelector("#bd-month-prev");
+        var nextBtn = panel.querySelector("#bd-month-next");
+        if (prevBtn) prevBtn.addEventListener("click", function() {
+          currentMonth.m--;
+          if (currentMonth.m < 0) { currentMonth.m = 11; currentMonth.y--; }
+          renderPanel();
+        });
+        if (nextBtn) nextBtn.addEventListener("click", function() {
+          var now2 = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+          if (currentMonth.y < now2.getFullYear() || (currentMonth.y === now2.getFullYear() && currentMonth.m < now2.getMonth())) {
+            currentMonth.m++;
+            if (currentMonth.m > 11) { currentMonth.m = 0; currentMonth.y++; }
+            renderPanel();
+          }
         });
       }
 
