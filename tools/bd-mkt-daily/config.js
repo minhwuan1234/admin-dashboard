@@ -6,7 +6,7 @@ window.TOOL_REGISTRY = window.TOOL_REGISTRY || [];
 
 /* ── Worker URL ── */
 // var _BD_WORKER_URL = "https://admin-dashboard.minhwuan889.workers.dev/";
-
+var _BD_WORKER_URL = "";
 /* ── OpenAI config ── */
 
 /* ── ISO week helper ── */
